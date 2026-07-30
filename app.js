@@ -204,25 +204,82 @@ function clearError() {
 
 // ---- Gallery ------------------------------------------------
 
+/** Formats a Date as a group heading, e.g. "Saturday, July 12, 2025". */
+function formatDateGroup(date) {
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/** Groups items by the calendar day they were taken (falls back to
+ *  "Unknown date" when no photo.takenDateTime is available), sorted
+ *  with the most recent day first. */
+function groupItemsByDate(items) {
+  const groups = new Map(); // key: 'YYYY-MM-DD' or 'unknown' -> { label, date, items }
+
+  items.forEach((item) => {
+    const taken = item.photo?.takenDateTime;
+    let key = 'unknown';
+    let date = null;
+    let label = 'Unknown date';
+
+    if (taken) {
+      const d = new Date(taken);
+      key = d.toISOString().slice(0, 10);
+      date = d;
+      label = formatDateGroup(d);
+    }
+
+    if (!groups.has(key)) groups.set(key, { label, date, items: [] });
+    groups.get(key).items.push(item);
+  });
+
+  return [...groups.values()].sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1; // unknown-date group last
+    if (!b.date) return -1;
+    return b.date - a.date; // newest first
+  });
+}
+
 function renderGallery(items) {
   const grid = document.getElementById('photo-grid');
   const countEl = document.getElementById('photo-count');
   grid.innerHTML = '';
   countEl.textContent = `${items.length} photo${items.length !== 1 ? 's' : ''}`;
 
-  items.forEach((item) => {
-    const thumb = item.thumbnails?.[0]?.medium?.url ?? '';
-    const card = document.createElement('div');
-    card.className = 'photo-card';
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
-    card.setAttribute('aria-label', item.name);
-    card.innerHTML = `<img src="${thumb}" alt="${escapeHtml(item.name)}" loading="lazy" />`;
-    card.addEventListener('click', () => openLightbox(item));
-    card.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') openLightbox(item);
+  const groups = groupItemsByDate(items);
+
+  groups.forEach((group) => {
+    const heading = document.createElement('h2');
+    heading.className = 'date-heading';
+    heading.textContent = `${group.label} · ${group.items.length} photo${
+      group.items.length !== 1 ? 's' : ''
+    }`;
+    grid.appendChild(heading);
+
+    const row = document.createElement('div');
+    row.className = 'date-group-grid';
+
+    group.items.forEach((item) => {
+      const thumb = item.thumbnails?.[0]?.medium?.url ?? '';
+      const card = document.createElement('div');
+      card.className = 'photo-card';
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-label', item.name);
+      card.innerHTML = `<img src="${thumb}" alt="${escapeHtml(item.name)}" loading="lazy" />`;
+      card.addEventListener('click', () => openLightbox(item));
+      card.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') openLightbox(item);
+      });
+      row.appendChild(card);
     });
-    grid.appendChild(card);
+
+    grid.appendChild(row);
   });
 }
 

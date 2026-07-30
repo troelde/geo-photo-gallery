@@ -216,7 +216,8 @@ function formatDateGroup(date) {
 
 /** Groups items by the calendar day they were taken (falls back to
  *  "Unknown date" when no photo.takenDateTime is available), sorted
- *  with the most recent day first. */
+ *  chronologically (oldest day first). Within each day, photos are
+ *  sorted by their exact taken time, oldest first. */
 function groupItemsByDate(items) {
   const groups = new Map(); // key: 'YYYY-MM-DD' or 'unknown' -> { label, date, items }
 
@@ -237,11 +238,22 @@ function groupItemsByDate(items) {
     groups.get(key).items.push(item);
   });
 
+  groups.forEach((group) => {
+    group.items.sort((a, b) => {
+      const ta = a.photo?.takenDateTime ? new Date(a.photo.takenDateTime) : null;
+      const tb = b.photo?.takenDateTime ? new Date(b.photo.takenDateTime) : null;
+      if (!ta && !tb) return 0;
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return ta - tb; // oldest first within the day
+    });
+  });
+
   return [...groups.values()].sort((a, b) => {
     if (!a.date && !b.date) return 0;
     if (!a.date) return 1; // unknown-date group last
     if (!b.date) return -1;
-    return b.date - a.date; // newest first
+    return a.date - b.date; // chronological: oldest day first
   });
 }
 

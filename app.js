@@ -41,6 +41,7 @@ let leafletMap = null;
 let lastMapBounds = null; // re-applied once the map tab becomes visible
 let photos = [];
 let pendingAccessToken = null; // set when handleRedirectPromise() itself returns a Graph token
+let lastAccessToken = null; // cached for on-demand full-res fetches from the lightbox
 
 // ---- Helpers ------------------------------------------------
 
@@ -57,7 +58,7 @@ function encodeShareUrl(url) {
 async function fetchShareChildren(token) {
   const shareId = encodeShareUrl(CONFIG.shareUrl);
   const select = [
-    'id', 'name', 'file', 'photo', 'location', 'image',
+    'id', 'name', 'file', 'photo', 'location', 'image', 'parentReference',
     '@microsoft.graph.downloadUrl',
   ].join(',');
 
@@ -230,12 +231,13 @@ function openLightbox(item) {
   const img = document.getElementById('lightbox-img');
   const info = document.getElementById('lightbox-info');
 
-  const src =
-    item['@microsoft.graph.downloadUrl'] ||
-    item.thumbnails?.[0]?.large?.url ||
-    item.thumbnails?.[0]?.medium?.url ||
-    '';
-  img.src = src;
+  // Show the thumbnail instantly so the lightbox never feels empty, then
+  // swap in the full-resolution original once it's fetched (Graph doesn't
+  // include @microsoft.graph.downloadUrl on the /shares children listing,
+  // so it has to be requested per item, on demand).
+  const placeholder =
+    item.thumbnails?.[0]?.large?.url || item.thumbnails?.[0]?.medium?.url || '';
+  img.src = item['@microsoft.graph.downloadUrl'] || placeholder;
   img.alt = item.name;
 
   const loc = item.location;
@@ -255,7 +257,41 @@ function openLightbox(item) {
     .join('<br>');
 
   lb.hidden = false;
+
+  if (!item['@microsoft.graph.downloadUrl']) {
+    fetchFullResUrl(item).then((url) => {
+      // Only swap if the lightbox is still showing this same photo.
+      if (url && !lb.hidden && img.alt === item.name) {
+        img.src = url;
+      }
+    });
+  }
 }
+
+/** Fetch the full-resolution download URL for a single item on demand,
+ *  since Graph doesn't return @microsoft.graph.downloadUrl on the
+ *  /shares/{shareId}/driveItem/children listing. */
+async function fetchFullResUrl(item) {
+  const driveId = item.parentReference?.driveId;
+  if (!driveId || !lastAccessToken) return null;
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${driveId}/items/${item.id}` +
+      `?$select=@microsoft.graph.downloadUrl`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${lastAccessToken}` },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const fullUrl = data['@microsoft.graph.downloadUrl'];
+    if (fullUrl) item['@microsoft.graph.downloadUrl'] = fullUrl; // cache on item
+    return fullUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
 
 function escapeHtml(str) {
   return str.replace(/[&<>"']/g, (c) =>
@@ -393,6 +429,8 @@ async function loadPhotos() {
       // navigates away. Nothing more to do on this page load.
       return;
     }
+
+    lastAccessToken = token;
 
     const result = await fetchShareChildren(token);
 

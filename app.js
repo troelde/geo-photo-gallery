@@ -231,8 +231,8 @@ function openLightbox(item) {
   const info = document.getElementById('lightbox-info');
 
   const src =
-    item.thumbnails?.[0]?.large?.url ||
     item['@microsoft.graph.downloadUrl'] ||
+    item.thumbnails?.[0]?.large?.url ||
     item.thumbnails?.[0]?.medium?.url ||
     '';
   img.src = src;

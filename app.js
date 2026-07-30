@@ -287,6 +287,7 @@ function openLightbox(item) {
   const lb = document.getElementById('lightbox');
   const img = document.getElementById('lightbox-img');
   const info = document.getElementById('lightbox-info');
+  const descriptionEl = document.getElementById('lightbox-description');
 
   // Show the thumbnail instantly so the lightbox never feels empty, then
   // swap in the full-resolution original once it's fetched (Graph doesn't
@@ -297,6 +298,13 @@ function openLightbox(item) {
   img.src = item['@microsoft.graph.downloadUrl'] || placeholder;
   img.alt = item.name;
 
+  if (item.description) {
+    descriptionEl.textContent = item.description;
+    descriptionEl.hidden = false;
+  } else {
+    descriptionEl.hidden = true;
+  }
+
   const loc = item.location;
   const date = item.photo?.takenDateTime
     ? '📅 ' + new Date(item.photo.takenDateTime).toLocaleDateString()
@@ -304,13 +312,9 @@ function openLightbox(item) {
   const coords = loc?.latitude
     ? `📍 ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
     : '';
-  const description = item.description
-    ? `<em>${escapeHtml(item.description)}</em>`
-    : '';
 
   info.innerHTML = [
     `<strong>${escapeHtml(item.name)}</strong>`,
-    description,
     date,
     coords,
   ]

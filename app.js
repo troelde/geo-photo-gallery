@@ -38,6 +38,7 @@ let msalInstance = null;
 let username = '';
 let homeAccountId = null; // more reliable account key than username; used with getAccount()
 let leafletMap = null;
+let lastMapBounds = null; // re-applied once the map tab becomes visible
 let photos = [];
 let pendingAccessToken = null; // set when handleRedirectPromise() itself returns a Graph token
 
@@ -343,7 +344,13 @@ function plotPhotosOnMap(items) {
   const bounds = L.latLngBounds(
     geoItems.map((i) => [i.location.latitude, i.location.longitude])
   );
-  leafletMap.fitBounds(bounds, { padding: [40, 40] });
+  lastMapBounds = bounds;
+  // If the map tab is hidden right now, the container has zero size and
+  // fitBounds() would pick a wildly wrong zoom. Only fit immediately when
+  // visible; otherwise the tab-switch handler re-applies it once shown.
+  if (!document.getElementById('map-view').hidden) {
+    leafletMap.fitBounds(bounds, { padding: [40, 40] });
+  }
 }
 
 // ---- Main Load ----------------------------------------------
@@ -425,9 +432,16 @@ document.querySelectorAll('.tab').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById('gallery-view').hidden = view !== 'gallery';
     document.getElementById('map-view').hidden = view !== 'map';
-    // Leaflet needs a size invalidation when its container becomes visible
+    // Leaflet needs a size invalidation when its container becomes visible,
+    // and bounds must be re-applied since the earlier fit may have happened
+    // while the container was hidden (zero size = wrong zoom level).
     if (view === 'map' && leafletMap) {
-      setTimeout(() => leafletMap.invalidateSize(), 50);
+      setTimeout(() => {
+        leafletMap.invalidateSize();
+        if (lastMapBounds) {
+          leafletMap.fitBounds(lastMapBounds, { padding: [40, 40] });
+        }
+      }, 50);
     }
   });
 });

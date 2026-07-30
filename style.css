@@ -181,6 +181,31 @@ main {
   position: relative;
 }
 
+/* When the Map tab is active, let the map fill the remaining viewport
+   below the sticky header instead of being constrained by main's
+   padding/max-width. --header-height is set from JS (app.js). */
+body.map-mode main {
+  padding: 0;
+  max-width: none;
+}
+
+body.map-mode #map-view {
+  position: fixed;
+  top: var(--header-height, 112px);
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+body.map-mode .map-legend {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 400;
+  margin: 0;
+  max-width: calc(100% - 1.5rem);
+}
+
 .map-legend {
   padding: 0.6rem 1rem;
   margin-bottom: 0.75rem;
@@ -198,6 +223,12 @@ main {
   border-radius: var(--radius);
   border: 1px solid var(--border);
   background: #111;
+}
+
+body.map-mode #map {
+  height: 100%;
+  border-radius: 0;
+  border: none;
 }
 
 .map-notice {

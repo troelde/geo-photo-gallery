@@ -424,6 +424,20 @@ async function loadPhotos() {
 
 // ---- Event Wiring -------------------------------------------
 
+// Keep --header-height in sync with the sticky header's real height so the
+// full-window map view can size itself against it.
+function updateHeaderHeightVar() {
+  const header = document.getElementById('app-header');
+  if (header) {
+    document.documentElement.style.setProperty(
+      '--header-height',
+      header.offsetHeight + 'px'
+    );
+  }
+}
+window.addEventListener('resize', updateHeaderHeightVar);
+updateHeaderHeightVar();
+
 // Tabs
 document.querySelectorAll('.tab').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -432,6 +446,8 @@ document.querySelectorAll('.tab').forEach((btn) => {
     btn.classList.add('active');
     document.getElementById('gallery-view').hidden = view !== 'gallery';
     document.getElementById('map-view').hidden = view !== 'map';
+    document.body.classList.toggle('map-mode', view === 'map');
+    updateHeaderHeightVar();
     // Leaflet needs a size invalidation when its container becomes visible,
     // and bounds must be re-applied since the earlier fit may have happened
     // while the container was hidden (zero size = wrong zoom level).

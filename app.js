@@ -278,11 +278,15 @@ function renderGallery(items) {
 
     group.items.forEach((item) => {
       const thumb = item.thumbnails?.[0]?.medium?.url ?? '';
+      const hint = item.description
+        ? `${item.description} (${item.name})`
+        : item.name;
       const card = document.createElement('div');
       card.className = 'photo-card';
       card.setAttribute('role', 'button');
       card.setAttribute('tabindex', '0');
-      card.setAttribute('aria-label', item.name);
+      card.setAttribute('aria-label', hint);
+      card.title = hint;
       card.innerHTML = `<img src="${thumb}" alt="${escapeHtml(item.name)}" loading="lazy" />`;
       card.addEventListener('click', () => openLightbox(item));
       card.addEventListener('keydown', (e) => {

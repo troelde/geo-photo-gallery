@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geo Photo Gallery</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app-header">
+    <header>
+      <h1>📍 Geo Photo Gallery</h1>
+      <div id="auth-bar">
+        <span id="auth-status"></span>
+        <button id="signin-btn" class="btn" hidden>Sign in to Microsoft</button>
+        <button id="signout-btn" class="btn secondary" hidden>Sign out</button>
+      </div>
+    </header>
+
+    <nav id="view-tabs">
+      <button class="tab active" data-view="gallery">🖼 Gallery</button>
+      <button class="tab" data-view="map">🗺 Map</button>
+    </nav>
+  </div>
+
+  <main>
+    <div id="loading" hidden>
+      <div class="spinner"></div>
+      <p>Loading photos…</p>
+    </div>
+    <div id="error-msg" class="error-banner" hidden></div>
+
+    <!-- Gallery view -->
+    <section id="gallery-view">
+      <div id="photo-count" class="subtle"></div>
+      <div id="photo-grid"></div>
+    </section>
+
+    <!-- Map view -->
+    <section id="map-view" hidden>
+      <div id="map-legend" class="map-legend" hidden></div>
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <!-- Lightbox -->
+  <div id="lightbox" hidden role="dialog" aria-modal="true">
+    <button id="lightbox-close" aria-label="Close">✕</button>
+    <img id="lightbox-img" src="" alt="" />
+    <div id="lightbox-info"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@azure/msal-browser@5.17.3/lib/msal-browser.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ const CONFIG = {
   // How to get it:
   //   OneDrive → right-click your photos folder → Share
   //   → "Anyone with the link can view" → Copy link
-  shareUrl: 'https://1drv.ms/f/c/99ad336b2325601b/IgBWQR1Nwb5eRZ09VnaZO-ZzAakE4oH5EM7sqUfchbmz9wU',
+  shareUrl: 'https://1drv.ms/f/c/99ad336b2325601b/IgBWQR1Nwb5eRZ09VnaZO-ZzAVRlkuoNDh1EP8GDBcI2-9A',
 
   // Azure App Client ID — needed only if the anonymous fetch fails (likely).
   // How to get one (free, ~5 min):

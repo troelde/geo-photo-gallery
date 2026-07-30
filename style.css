@@ -142,6 +142,34 @@ main {
 .error-banner a { color: var(--accent); }
 .error-banner code, .error-banner strong { font-weight: 600; }
 
+/* ---- Gallery Description (from OneDrive metadata/description.md) ---- */
+.gallery-description {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+.gallery-description h1,
+.gallery-description h2,
+.gallery-description h3 {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+.gallery-description p { margin: 0 0 0.6rem; }
+.gallery-description p:last-child { margin-bottom: 0; }
+.gallery-description a { color: var(--accent); }
+.gallery-description ul,
+.gallery-description ol { margin: 0 0 0.6rem 1.25rem; }
+.gallery-description img { max-width: 100%; border-radius: var(--radius); }
+.gallery-description code {
+  background: var(--bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
 /* ---- Photo Count ---- */
 .subtle {
   font-size: 0.8rem;

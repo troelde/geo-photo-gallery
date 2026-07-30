@@ -58,8 +58,8 @@ function encodeShareUrl(url) {
 async function fetchShareChildren(token) {
   const shareId = encodeShareUrl(CONFIG.shareUrl);
   const select = [
-    'id', 'name', 'description', 'file', 'photo', 'location', 'image',
-    'parentReference', '@microsoft.graph.downloadUrl',
+    'id', 'name', 'description', 'file', 'folder', 'photo', 'location',
+    'image', 'parentReference', '@microsoft.graph.downloadUrl',
   ].join(',');
 
   const firstPage =
@@ -79,6 +79,54 @@ async function fetchShareChildren(token) {
   }
 
   return { ok: true, items };
+}
+
+/** Looks for a `metadata/description.md` file inside the shared folder and,
+ *  if found, fetches its raw markdown so it can be rendered as a gallery
+ *  intro/description above the photo grid. Returns null if not found or
+ *  on any failure — this is a nice-to-have, not required for the gallery
+ *  to function. */
+async function fetchGalleryDescription(rootItems, token) {
+  const metadataFolder = rootItems.find(
+    (i) => i.folder && i.name?.toLowerCase() === 'metadata'
+  );
+  const driveId = metadataFolder?.parentReference?.driveId;
+  if (!metadataFolder || !driveId || !token) return null;
+
+  try {
+    const childrenUrl =
+      `${GRAPH_API}/drives/${driveId}/items/${metadataFolder.id}/children` +
+      `?$select=id,name,file`;
+    const childrenResp = await fetch(childrenUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!childrenResp.ok) return null;
+    const childrenData = await childrenResp.json();
+    const descFile = (childrenData.value ?? []).find(
+      (c) => c.file && c.name?.toLowerCase() === 'description.md'
+    );
+    if (!descFile) return null;
+
+    const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${descFile.id}/content`;
+    const contentResp = await fetch(contentUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!contentResp.ok) return null;
+    return await contentResp.text();
+  } catch {
+    return null;
+  }
+}
+
+/** Renders fetched markdown (if any) into the gallery description box. */
+function renderGalleryDescription(markdown) {
+  const el = document.getElementById('gallery-description');
+  if (!markdown || typeof marked === 'undefined') {
+    el.hidden = true;
+    return;
+  }
+  el.innerHTML = marked.parse(markdown);
+  el.hidden = false;
 }
 
 // ---- MSAL Auth ------------------------------------------------
@@ -532,6 +580,10 @@ async function loadPhotos() {
 
     renderGallery(photos);
     plotPhotosOnMap(photos);
+
+    // Nice-to-have: render an optional gallery description from
+    // metadata/description.md, without blocking photo rendering above.
+    fetchGalleryDescription(result.items, token).then(renderGalleryDescription);
   } catch (err) {
     showError('Unexpected error: ' + err.message);
   } finally {

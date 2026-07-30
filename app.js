@@ -58,8 +58,8 @@ function encodeShareUrl(url) {
 async function fetchShareChildren(token) {
   const shareId = encodeShareUrl(CONFIG.shareUrl);
   const select = [
-    'id', 'name', 'file', 'photo', 'location', 'image', 'parentReference',
-    '@microsoft.graph.downloadUrl',
+    'id', 'name', 'description', 'file', 'photo', 'location', 'image',
+    'parentReference', '@microsoft.graph.downloadUrl',
   ].join(',');
 
   const firstPage =
@@ -304,9 +304,13 @@ function openLightbox(item) {
   const coords = loc?.latitude
     ? `📍 ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
     : '';
+  const description = item.description
+    ? `<em>${escapeHtml(item.description)}</em>`
+    : '';
 
   info.innerHTML = [
     `<strong>${escapeHtml(item.name)}</strong>`,
+    description,
     date,
     coords,
   ]

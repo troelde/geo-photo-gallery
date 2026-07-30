@@ -278,9 +278,7 @@ function renderGallery(items) {
 
     group.items.forEach((item) => {
       const thumb = item.thumbnails?.[0]?.medium?.url ?? '';
-      const hint = item.description
-        ? `${item.description} (${item.name})`
-        : item.name;
+      const hint = item.description || item.name;
       const card = document.createElement('div');
       card.className = 'photo-card';
       card.setAttribute('role', 'button');

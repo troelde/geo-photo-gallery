@@ -270,10 +270,36 @@ function initMap() {
     CONFIG.map.defaultCenter,
     CONFIG.map.defaultZoom
   );
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+
+  const topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution:
+      'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+  });
+  const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-  }).addTo(leafletMap);
+    attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+  });
+  const satellite = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {
+      maxZoom: 19,
+      attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
+    }
+  );
+
+  topo.addTo(leafletMap);
+  L.control
+    .layers(
+      {
+        'Topographic (OpenTopoMap)': topo,
+        'Streets (OSM)': streets,
+        'Satellite (Esri)': satellite,
+      },
+      null,
+      { collapsed: false }
+    )
+    .addTo(leafletMap);
 }
 
 function plotPhotosOnMap(items) {

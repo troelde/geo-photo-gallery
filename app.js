@@ -518,6 +518,9 @@ function showLightboxItem(item) {
   const hasGps = loc?.latitude != null && loc?.longitude != null;
   viewOnMapBtn.hidden = !hasGps;
   viewOnMapBtn.onclick = hasGps ? () => showPhotoOnMap(item) : null;
+  viewOnMapBtn.title = hasGps
+    ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
+    : '';
 
   lb.hidden = false;
 

@@ -192,8 +192,9 @@ async function applyYamlGpsFallback(photos, rootItems, token) {
         });
         if (!resp.ok) return;
         const data = jsyaml.load(await resp.text());
-        const lat = data?.position?.latitude;
-        const lon = data?.position?.longitude;
+        const pos = data?.position ?? {};
+        const lat = pos.lat ?? pos.latitude;
+        const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
         if (typeof lat === 'number' && typeof lon === 'number') {
           photo.location = { latitude: lat, longitude: lon };
         }

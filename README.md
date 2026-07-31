@@ -104,8 +104,8 @@ If a photo has no GPS location in its EXIF data, you can supply one manually by 
 
 ```yaml
 position:
-  latitude: 78.22334
-  longitude: 15.6482
+  lat: 78.22334
+  long: 15.6482
 ```
 
 The sidecar is only used when the photo itself has no GPS metadata — it never overrides real EXIF location data. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS.

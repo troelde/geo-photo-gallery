@@ -136,8 +136,22 @@ function renderGalleryDescription(markdown) {
     el.hidden = true;
     return;
   }
-  el.innerHTML = marked.parse(markdown);
+  el.innerHTML = marked.parse(markdown, { renderer: markdownLinkRenderer() });
   el.hidden = false;
+}
+
+/** A marked.js renderer that makes every link open in a new tab, so
+ *  clicking a link in the gallery description doesn't navigate away
+ *  from the gallery itself. */
+function markdownLinkRenderer() {
+  const renderer = new marked.Renderer();
+  const defaultLink = renderer.link.bind(renderer);
+  renderer.link = (href, title, text) =>
+    defaultLink(href, title, text).replace(
+      '<a ',
+      '<a target="_blank" rel="noopener noreferrer" '
+    );
+  return renderer;
 }
 
 // ---- MSAL Auth ------------------------------------------------

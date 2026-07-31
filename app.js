@@ -454,17 +454,14 @@ function showLightboxItem(item) {
 
   const loc = item.location;
   const date = item.photo?.takenDateTime
-    ? '📅 ' + new Date(item.photo.takenDateTime).toLocaleDateString()
-    : '';
-  const coords = loc?.latitude
-    ? `📍 ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
+    ? '📅 ' +
+      new Date(item.photo.takenDateTime).toLocaleString(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
     : '';
 
-  info.innerHTML = [
-    `<strong>${escapeHtml(item.name)}</strong>`,
-    date,
-    coords,
-  ]
+  info.innerHTML = [`<strong>${escapeHtml(item.name)}</strong>`, date]
     .filter(Boolean)
     .join('<br>');
 

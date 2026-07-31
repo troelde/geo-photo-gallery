@@ -92,6 +92,18 @@ After deploying, add your production URL as an additional **Redirect URI** in yo
 
 ---
 
+## Viewing a Different Share Without Editing config.js
+
+You can override the configured share URL at runtime with a `?shareUrl=` query parameter, e.g.:
+
+```
+https://troelde.github.io/geo-photo-gallery/?shareUrl=https://1drv.ms/f/...OTHER_LINK
+```
+
+This is handy for sharing links to a specific album without redeploying. If the parameter is absent, `config.js`'s `shareUrl` is used as the default.
+
+---
+
 ## File Structure
 
 ```

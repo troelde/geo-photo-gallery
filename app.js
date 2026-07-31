@@ -54,9 +54,18 @@ function encodeShareUrl(url) {
   return 'u!' + b64;
 }
 
+/** Resolves the OneDrive share URL to use: a `?shareUrl=` query parameter
+ *  takes priority (lets you link to a different shared folder without
+ *  editing config.js), falling back to CONFIG.shareUrl otherwise. */
+function getShareUrl() {
+  const fromQuery = new URLSearchParams(window.location.search).get('shareUrl');
+  return fromQuery || CONFIG.shareUrl;
+}
+
+
 /** Fetch all image children of a shared folder, following nextLink pages. */
 async function fetchShareChildren(token) {
-  const shareId = encodeShareUrl(CONFIG.shareUrl);
+  const shareId = encodeShareUrl(getShareUrl());
   const select = [
     'id', 'name', 'description', 'file', 'folder', 'photo', 'location',
     'image', 'parentReference', '@microsoft.graph.downloadUrl',
@@ -519,9 +528,11 @@ function plotPhotosOnMap(items) {
 // ---- Main Load ----------------------------------------------
 
 async function loadPhotos() {
-  if (!CONFIG.shareUrl || CONFIG.shareUrl.includes('YOUR_SHARE_LINK')) {
+  const shareUrl = getShareUrl();
+  if (!shareUrl || shareUrl.includes('YOUR_SHARE_LINK')) {
     showError(
-      'Please open <strong>config.js</strong> and set your OneDrive share URL. ' +
+      'Please open <strong>config.js</strong> and set your OneDrive share URL ' +
+        '(or pass one via <code>?shareUrl=</code> in the page URL). ' +
         'See <a href="README.md">README.md</a> for instructions.'
     );
     return;

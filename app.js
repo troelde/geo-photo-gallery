@@ -40,6 +40,8 @@ let homeAccountId = null; // more reliable account key than username; used with 
 let leafletMap = null;
 let lastMapBounds = null; // re-applied once the map tab becomes visible
 let photos = [];
+let sortedPhotos = []; // chronologically flattened order, used for lightbox prev/next
+let currentPhotoIndex = -1; // index into sortedPhotos of the currently open lightbox photo
 let pendingAccessToken = null; // set when handleRedirectPromise() itself returns a Graph token
 let lastAccessToken = null; // cached for on-demand full-res fetches from the lightbox
 
@@ -321,6 +323,7 @@ function renderGallery(items) {
   countEl.textContent = `${items.length} photo${items.length !== 1 ? 's' : ''}`;
 
   const groups = groupItemsByDate(items);
+  sortedPhotos = groups.flatMap((g) => g.items);
 
   groups.forEach((group) => {
     const heading = document.createElement('h2');
@@ -355,6 +358,28 @@ function renderGallery(items) {
 }
 
 function openLightbox(item) {
+  currentPhotoIndex = sortedPhotos.indexOf(item);
+  showLightboxItem(item);
+  document.getElementById('lightbox').hidden = false;
+  const multiplePhotos = sortedPhotos.length > 1;
+  document.getElementById('lightbox-prev').disabled = !multiplePhotos;
+  document.getElementById('lightbox-next').disabled = !multiplePhotos;
+}
+
+function showNextPhoto() {
+  if (!sortedPhotos.length) return;
+  currentPhotoIndex = (currentPhotoIndex + 1) % sortedPhotos.length;
+  showLightboxItem(sortedPhotos[currentPhotoIndex]);
+}
+
+function showPrevPhoto() {
+  if (!sortedPhotos.length) return;
+  currentPhotoIndex =
+    (currentPhotoIndex - 1 + sortedPhotos.length) % sortedPhotos.length;
+  showLightboxItem(sortedPhotos[currentPhotoIndex]);
+}
+
+function showLightboxItem(item) {
   const lb = document.getElementById('lightbox');
   const img = document.getElementById('lightbox-img');
   const info = document.getElementById('lightbox-info');
@@ -651,8 +676,19 @@ document.getElementById('lightbox').addEventListener('click', (e) => {
     document.getElementById('lightbox').hidden = true;
   }
 });
+document.getElementById('lightbox-prev').addEventListener('click', (e) => {
+  e.stopPropagation();
+  showPrevPhoto();
+});
+document.getElementById('lightbox-next').addEventListener('click', (e) => {
+  e.stopPropagation();
+  showNextPhoto();
+});
 document.addEventListener('keydown', (e) => {
+  if (document.getElementById('lightbox').hidden) return;
   if (e.key === 'Escape') document.getElementById('lightbox').hidden = true;
+  if (e.key === 'ArrowRight') showNextPhoto();
+  if (e.key === 'ArrowLeft') showPrevPhoto();
 });
 
 // Auth buttons

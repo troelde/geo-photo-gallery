@@ -343,6 +343,39 @@ body.map-mode #map {
 }
 #lightbox-close:hover { background: rgba(255,255,255,0.25); }
 
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.lightbox-nav:hover { background: rgba(255,255,255,0.25); }
+.lightbox-nav:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+#lightbox-prev { left: 1.25rem; }
+#lightbox-next { right: 1.25rem; }
+
+@media (max-width: 600px) {
+  .lightbox-nav { width: 2.4rem; height: 2.4rem; font-size: 1.5rem; }
+  #lightbox-prev { left: 0.4rem; }
+  #lightbox-next { right: 0.4rem; }
+}
+
 #lightbox-img {
   max-width: 90vw;
   max-height: 80vh;

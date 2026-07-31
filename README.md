@@ -78,6 +78,7 @@ Sign-in uses [MSAL.js](https://github.com/AzureAD/microsoft-authentication-libra
 | Gallery & per-day descriptions | Optional Markdown files in a `metadata` subfolder are rendered above the gallery and/or under each date heading (see below) |
 | Map view | GPS-tagged photos plotted as thumbnail pins, with a layer switcher for Topographic (OpenTopoMap), Streets (OSM), and Satellite (Esri) |
 | No-GPS handling | A legend shows how many photos lack GPS data; those are still browsable in the Gallery |
+| YAML GPS fallback | A `<photo filename>.yaml` sidecar file next to a photo can supply GPS coordinates when the photo itself has no location EXIF data (see below) |
 | Sticky header/tabs | The title bar and Gallery/Map tabs stay pinned while scrolling |
 | Pagination | Automatically fetches all pages from Graph (>200 photos) |
 | No build tools | Plain HTML/CSS/JS, zero dependencies to install |
@@ -94,6 +95,20 @@ You can add optional Markdown files to a `metadata` subfolder inside your shared
 | `metadata/YYYYMMDD-description.md` | Under that day's date heading in the gallery (e.g. `metadata/20250712-description.md` for July 12, 2025) |
 
 Both support standard Markdown (headings, bold/italic, links, lists, etc.), rendered client-side with [marked.js](https://marked.js.org/). Links always open in a new tab so readers don't navigate away from the gallery. Files are optional — omit either or both if you don't need them.
+
+---
+
+## GPS Fallback via YAML Sidecar Files
+
+If a photo has no GPS location in its EXIF data, you can supply one manually by adding a YAML file right next to it in the same shared folder, named `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml` for `IMG_1234.jpg`), containing a `position` dictionary with decimal-degree coordinates:
+
+```yaml
+position:
+  latitude: 78.22334
+  longitude: 15.6482
+```
+
+The sidecar is only used when the photo itself has no GPS metadata — it never overrides real EXIF location data. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS.
 
 ---
 

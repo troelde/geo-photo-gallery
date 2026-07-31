@@ -156,6 +156,54 @@ async function fetchDescriptions(rootItems, token) {
   }
 }
 
+/** For photos missing GPS EXIF metadata, look for a sidecar YAML file
+ *  named exactly `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next
+ *  to the photo in the shared folder. If found and it contains a
+ *  `position` dict with `latitude`/`longitude` (decimal degrees), that's
+ *  used as a GPS fallback so the photo still shows up on the map.
+ *  Mutates matching photo objects in place; a no-op when nothing matches
+ *  or the YAML library isn't loaded. */
+async function applyYamlGpsFallback(photos, rootItems, token) {
+  if (!token || typeof jsyaml === 'undefined') return;
+
+  const yamlByName = new Map(
+    rootItems
+      .filter((i) => i.file && /\.ya?ml$/i.test(i.name ?? ''))
+      .map((i) => [i.name.toLowerCase(), i])
+  );
+  if (!yamlByName.size) return;
+
+  const needsFallback = photos.filter(
+    (p) => !(p.location?.latitude != null && p.location?.longitude != null)
+  );
+
+  await Promise.all(
+    needsFallback.map(async (photo) => {
+      const yamlItem =
+        yamlByName.get(`${photo.name}.yaml`.toLowerCase()) ||
+        yamlByName.get(`${photo.name}.yml`.toLowerCase());
+      const driveId = yamlItem?.parentReference?.driveId;
+      if (!yamlItem || !driveId) return;
+
+      try {
+        const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${yamlItem.id}/content`;
+        const resp = await fetch(contentUrl, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!resp.ok) return;
+        const data = jsyaml.load(await resp.text());
+        const lat = data?.position?.latitude;
+        const lon = data?.position?.longitude;
+        if (typeof lat === 'number' && typeof lon === 'number') {
+          photo.location = { latitude: lat, longitude: lon };
+        }
+      } catch {
+        // Malformed YAML or fetch failure — GPS fallback is best-effort.
+      }
+    })
+  );
+}
+
 /** Renders fetched markdown (if any) into the gallery description box. */
 function renderGalleryDescription(markdown) {
   const el = document.getElementById('gallery-description');
@@ -672,9 +720,12 @@ async function loadPhotos() {
     }
 
     // Look for optional metadata/description.md (gallery-wide) and
-    // metadata/YYYYMMDD-description.md (per-day) files before rendering,
-    // so per-day descriptions can be placed under their date heading.
-    const descriptions = await fetchDescriptions(result.items, token);
+    // metadata/YYYYMMDD-description.md (per-day) files, and for per-photo
+    // <filename>.yaml sidecars providing a GPS fallback, before rendering.
+    const [descriptions] = await Promise.all([
+      fetchDescriptions(result.items, token),
+      applyYamlGpsFallback(photos, result.items, token),
+    ]);
 
     renderGallery(photos, descriptions.byDate);
     plotPhotosOnMap(photos);

@@ -156,14 +156,19 @@ async function fetchDescriptions(rootItems, token) {
   }
 }
 
-/** For photos missing GPS EXIF metadata, look for a sidecar YAML file
- *  named exactly `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next
- *  to the photo in the shared folder. If found and it contains a
- *  `position` dict with `latitude`/`longitude` (decimal degrees), that's
- *  used as a GPS fallback so the photo still shows up on the map.
+/** For photos missing GPS EXIF metadata and/or a OneDrive description,
+ *  look for a sidecar YAML file named exactly `<photo filename>.yaml`
+ *  (e.g. `IMG_1234.jpg.yaml`) next to the photo in the shared folder.
+ *  If found:
+ *   - a `position` dict with `lat`/`long` (or `latitude`/`longitude`,
+ *     decimal degrees) is used as a GPS fallback so the photo still
+ *     shows up on the map;
+ *   - a `description` string is used as the photo's subtitle when
+ *     OneDrive itself has no description set for that file.
+ *  Neither ever overrides real OneDrive/EXIF data -- only fills gaps.
  *  Mutates matching photo objects in place; a no-op when nothing matches
  *  or the YAML library isn't loaded. */
-async function applyYamlGpsFallback(photos, rootItems, token) {
+async function applyYamlFallbacks(photos, rootItems, token) {
   if (!token || typeof jsyaml === 'undefined') return;
 
   const yamlByName = new Map(
@@ -174,7 +179,9 @@ async function applyYamlGpsFallback(photos, rootItems, token) {
   if (!yamlByName.size) return;
 
   const needsFallback = photos.filter(
-    (p) => !(p.location?.latitude != null && p.location?.longitude != null)
+    (p) =>
+      !(p.location?.latitude != null && p.location?.longitude != null) ||
+      !p.description
   );
 
   await Promise.all(
@@ -192,14 +199,23 @@ async function applyYamlGpsFallback(photos, rootItems, token) {
         });
         if (!resp.ok) return;
         const data = jsyaml.load(await resp.text());
+
         const pos = data?.position ?? {};
         const lat = pos.lat ?? pos.latitude;
         const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
-        if (typeof lat === 'number' && typeof lon === 'number') {
+        if (
+          !(photo.location?.latitude != null && photo.location?.longitude != null) &&
+          typeof lat === 'number' &&
+          typeof lon === 'number'
+        ) {
           photo.location = { latitude: lat, longitude: lon };
         }
+
+        if (!photo.description && typeof data?.description === 'string') {
+          photo.description = data.description;
+        }
       } catch {
-        // Malformed YAML or fetch failure — GPS fallback is best-effort.
+        // Malformed YAML or fetch failure -- fallback is best-effort.
       }
     })
   );
@@ -725,10 +741,11 @@ async function loadPhotos() {
 
     // Look for optional metadata/description.md (gallery-wide) and
     // metadata/YYYYMMDD-description.md (per-day) files, and for per-photo
-    // <filename>.yaml sidecars providing a GPS fallback, before rendering.
+    // <filename>.yaml sidecars providing GPS/description fallbacks, before
+    // rendering.
     const [descriptions] = await Promise.all([
       fetchDescriptions(result.items, token),
-      applyYamlGpsFallback(photos, result.items, token),
+      applyYamlFallbacks(photos, result.items, token),
     ]);
 
     renderGallery(photos, descriptions.byDate);

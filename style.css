@@ -428,6 +428,20 @@ body.map-mode #map {
 }
 #lightbox-info strong { color: var(--text); font-size: 1rem; }
 
+.lightbox-map-btn {
+  display: block;
+  margin: 0.75rem auto 0;
+  padding: 0.4rem 0.9rem;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.lightbox-map-btn:hover { opacity: 0.9; }
+.lightbox-map-btn[hidden] { display: none; }
+
 /* ---- Responsive ---- */
 @media (max-width: 600px) {
   header { flex-direction: column; gap: 0.75rem; align-items: flex-start; }

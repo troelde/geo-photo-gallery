@@ -72,7 +72,8 @@ Sign-in uses [MSAL.js](https://github.com/AzureAD/microsoft-authentication-libra
 | Feature | Details |
 |---------|---------|
 | Date-grouped gallery | Photos grouped by day taken, sorted chronologically (oldest first); undated photos last |
-| Lightbox | Click any photo for a full-resolution view, fetched on demand from Microsoft Graph |
+| Lightbox | Click any photo for a full-resolution view, fetched on demand from Microsoft Graph, with prev/next navigation |
+| Jump to map | Photos with GPS data show a "📍 View on map" button in the lightbox that switches to the Map tab centered on that photo's pin |
 | Photo descriptions | OneDrive file descriptions are shown as an overlay caption in the lightbox and as a hover tooltip in the gallery grid |
 | Gallery & per-day descriptions | Optional Markdown files in a `metadata` subfolder are rendered above the gallery and/or under each date heading (see below) |
 | Map view | GPS-tagged photos plotted as thumbnail pins, with a layer switcher for Topographic (OpenTopoMap), Streets (OSM), and Satellite (Esri) |

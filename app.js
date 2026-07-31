@@ -39,6 +39,7 @@ let username = '';
 let homeAccountId = null; // more reliable account key than username; used with getAccount()
 let leafletMap = null;
 let lastMapBounds = null; // re-applied once the map tab becomes visible
+let photoMarkers = new Map(); // item -> Leaflet marker, so the lightbox can jump to a photo's pin
 let photos = [];
 let sortedPhotos = []; // chronologically flattened order, used for lightbox prev/next
 let currentPhotoIndex = -1; // index into sortedPhotos of the currently open lightbox photo
@@ -467,6 +468,11 @@ function showLightboxItem(item) {
     .filter(Boolean)
     .join('<br>');
 
+  const viewOnMapBtn = document.getElementById('lightbox-view-on-map');
+  const hasGps = loc?.latitude != null && loc?.longitude != null;
+  viewOnMapBtn.hidden = !hasGps;
+  viewOnMapBtn.onclick = hasGps ? () => showPhotoOnMap(item) : null;
+
   lb.hidden = false;
 
   if (!item['@microsoft.graph.downloadUrl']) {
@@ -570,6 +576,8 @@ function plotPhotosOnMap(items) {
     legend.hidden = true;
   }
 
+  photoMarkers.clear();
+
   if (!geoItems.length) return;
 
   geoItems.forEach((item) => {
@@ -582,10 +590,12 @@ function plotPhotosOnMap(items) {
       iconAnchor: [28, 28],
     });
 
-    L.marker([latitude, longitude], { icon })
+    const marker = L.marker([latitude, longitude], { icon })
       .addTo(leafletMap)
       .on('click', () => openLightbox(item))
       .bindTooltip(item.name, { direction: 'top', offset: [0, -32] });
+
+    photoMarkers.set(item, marker);
   });
 
   const bounds = L.latLngBounds(
@@ -696,28 +706,44 @@ window.addEventListener('resize', updateHeaderHeightVar);
 updateHeaderHeightVar();
 
 // Tabs
+function switchView(view) {
+  document.querySelectorAll('.tab').forEach((t) =>
+    t.classList.toggle('active', t.dataset.view === view)
+  );
+  document.getElementById('gallery-view').hidden = view !== 'gallery';
+  document.getElementById('map-view').hidden = view !== 'map';
+  document.body.classList.toggle('map-mode', view === 'map');
+  updateHeaderHeightVar();
+  // Leaflet needs a size invalidation when its container becomes visible,
+  // and bounds must be re-applied since the earlier fit may have happened
+  // while the container was hidden (zero size = wrong zoom level).
+  if (view === 'map' && leafletMap) {
+    setTimeout(() => {
+      leafletMap.invalidateSize();
+      if (lastMapBounds) {
+        leafletMap.fitBounds(lastMapBounds, { padding: [40, 40] });
+      }
+    }, 50);
+  }
+}
+
 document.querySelectorAll('.tab').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const view = btn.dataset.view;
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('gallery-view').hidden = view !== 'gallery';
-    document.getElementById('map-view').hidden = view !== 'map';
-    document.body.classList.toggle('map-mode', view === 'map');
-    updateHeaderHeightVar();
-    // Leaflet needs a size invalidation when its container becomes visible,
-    // and bounds must be re-applied since the earlier fit may have happened
-    // while the container was hidden (zero size = wrong zoom level).
-    if (view === 'map' && leafletMap) {
-      setTimeout(() => {
-        leafletMap.invalidateSize();
-        if (lastMapBounds) {
-          leafletMap.fitBounds(lastMapBounds, { padding: [40, 40] });
-        }
-      }, 50);
-    }
-  });
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
+
+/** Switch to the Map tab, center on the given photo's marker, and open
+ *  its tooltip so it's obvious which pin corresponds to the photo that
+ *  was just being viewed in the lightbox. */
+function showPhotoOnMap(item) {
+  const marker = photoMarkers.get(item);
+  if (!marker) return;
+  document.getElementById('lightbox').hidden = true;
+  switchView('map');
+  setTimeout(() => {
+    leafletMap.setView(marker.getLatLng(), Math.max(leafletMap.getZoom(), 15));
+    marker.openTooltip();
+  }, 60);
+}
 
 // Lightbox close
 document.getElementById('lightbox-close').addEventListener('click', () => {

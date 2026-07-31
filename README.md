@@ -74,11 +74,25 @@ Sign-in uses [MSAL.js](https://github.com/AzureAD/microsoft-authentication-libra
 | Date-grouped gallery | Photos grouped by day taken, sorted chronologically (oldest first); undated photos last |
 | Lightbox | Click any photo for a full-resolution view, fetched on demand from Microsoft Graph |
 | Photo descriptions | OneDrive file descriptions are shown as an overlay caption in the lightbox and as a hover tooltip in the gallery grid |
+| Gallery & per-day descriptions | Optional Markdown files in a `metadata` subfolder are rendered above the gallery and/or under each date heading (see below) |
 | Map view | GPS-tagged photos plotted as thumbnail pins, with a layer switcher for Topographic (OpenTopoMap), Streets (OSM), and Satellite (Esri) |
 | No-GPS handling | A legend shows how many photos lack GPS data; those are still browsable in the Gallery |
 | Sticky header/tabs | The title bar and Gallery/Map tabs stay pinned while scrolling |
 | Pagination | Automatically fetches all pages from Graph (>200 photos) |
 | No build tools | Plain HTML/CSS/JS, zero dependencies to install |
+
+---
+
+## Gallery & Per-Day Descriptions
+
+You can add optional Markdown files to a `metadata` subfolder inside your shared OneDrive folder to add narrative text to the gallery:
+
+| File | Where it's rendered |
+|------|----------------------|
+| `metadata/description.md` | Above the whole gallery, as an introduction/overview |
+| `metadata/YYYYMMDD-description.md` | Under that day's date heading in the gallery (e.g. `metadata/20250712-description.md` for July 12, 2025) |
+
+Both support standard Markdown (headings, bold/italic, links, lists, etc.), rendered client-side with [marked.js](https://marked.js.org/). Links always open in a new tab so readers don't navigate away from the gallery. Files are optional — omit either or both if you don't need them.
 
 ---
 

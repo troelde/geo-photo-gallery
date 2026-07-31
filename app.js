@@ -92,40 +92,66 @@ async function fetchShareChildren(token) {
   return { ok: true, items };
 }
 
-/** Looks for a `metadata/description.md` file inside the shared folder and,
- *  if found, fetches its raw markdown so it can be rendered as a gallery
- *  intro/description above the photo grid. Returns null if not found or
- *  on any failure — this is a nice-to-have, not required for the gallery
- *  to function. */
-async function fetchGalleryDescription(rootItems, token) {
+/** Looks inside `metadata/` for:
+ *   - `description.md` — an overall gallery intro/description
+ *   - `YYYYMMDD-description.md` — a per-day description, shown under that
+ *     day's heading in the gallery (YYYYMMDD must match a date group's key)
+ *  Returns { global: string|null, byDate: Map<'YYYY-MM-DD', string> }.
+ *  Missing folder/files or any failure just yields empty results — this
+ *  is a nice-to-have, not required for the gallery to function. */
+async function fetchDescriptions(rootItems, token) {
+  const empty = { global: null, byDate: new Map() };
+
   const metadataFolder = rootItems.find(
     (i) => i.folder && i.name?.toLowerCase() === 'metadata'
   );
   const driveId = metadataFolder?.parentReference?.driveId;
-  if (!metadataFolder || !driveId || !token) return null;
+  if (!metadataFolder || !driveId || !token) return empty;
 
   try {
     const childrenUrl =
       `${GRAPH_API}/drives/${driveId}/items/${metadataFolder.id}/children` +
-      `?$select=id,name,file`;
+      `?$select=id,name,file&$top=200`;
     const childrenResp = await fetch(childrenUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!childrenResp.ok) return null;
+    if (!childrenResp.ok) return empty;
     const childrenData = await childrenResp.json();
-    const descFile = (childrenData.value ?? []).find(
-      (c) => c.file && c.name?.toLowerCase() === 'description.md'
-    );
-    if (!descFile) return null;
+    const files = (childrenData.value ?? []).filter((c) => c.file);
 
-    const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${descFile.id}/content`;
-    const contentResp = await fetch(contentUrl, {
-      headers: { Authorization: `Bearer ${token}` },
+    const fetchText = async (itemId) => {
+      const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${itemId}/content`;
+      const resp = await fetch(contentUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return resp.ok ? await resp.text() : null;
+    };
+
+    const globalFile = files.find(
+      (c) => c.name?.toLowerCase() === 'description.md'
+    );
+    const dateFileRegex = /^(\d{8})-description\.md$/i;
+    const dateFiles = files
+      .map((c) => ({ file: c, match: c.name?.match(dateFileRegex) }))
+      .filter((x) => x.match);
+
+    const [globalText, ...dateTexts] = await Promise.all([
+      globalFile ? fetchText(globalFile.id) : Promise.resolve(null),
+      ...dateFiles.map((x) => fetchText(x.file.id)),
+    ]);
+
+    const byDate = new Map();
+    dateFiles.forEach((x, i) => {
+      const text = dateTexts[i];
+      if (!text) return;
+      const raw = x.match[1]; // YYYYMMDD
+      const key = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+      byDate.set(key, text);
     });
-    if (!contentResp.ok) return null;
-    return await contentResp.text();
+
+    return { global: globalText, byDate };
   } catch {
-    return null;
+    return empty;
   }
 }
 
@@ -307,7 +333,7 @@ function groupItemsByDate(items) {
       label = formatDateGroup(d);
     }
 
-    if (!groups.has(key)) groups.set(key, { label, date, items: [] });
+    if (!groups.has(key)) groups.set(key, { key, label, date, items: [] });
     groups.get(key).items.push(item);
   });
 
@@ -330,7 +356,7 @@ function groupItemsByDate(items) {
   });
 }
 
-function renderGallery(items) {
+function renderGallery(items, dateDescriptions = new Map()) {
   const grid = document.getElementById('photo-grid');
   const countEl = document.getElementById('photo-count');
   grid.innerHTML = '';
@@ -346,6 +372,16 @@ function renderGallery(items) {
       group.items.length !== 1 ? 's' : ''
     }`;
     grid.appendChild(heading);
+
+    const dayMarkdown = dateDescriptions.get(group.key);
+    if (dayMarkdown && typeof marked !== 'undefined') {
+      const dayDesc = document.createElement('div');
+      dayDesc.className = 'date-description markdown-body';
+      dayDesc.innerHTML = marked.parse(dayMarkdown, {
+        renderer: markdownLinkRenderer(),
+      });
+      grid.appendChild(dayDesc);
+    }
 
     const row = document.createElement('div');
     row.className = 'date-group-grid';
@@ -628,12 +664,14 @@ async function loadPhotos() {
       return;
     }
 
-    renderGallery(photos);
-    plotPhotosOnMap(photos);
+    // Look for optional metadata/description.md (gallery-wide) and
+    // metadata/YYYYMMDD-description.md (per-day) files before rendering,
+    // so per-day descriptions can be placed under their date heading.
+    const descriptions = await fetchDescriptions(result.items, token);
 
-    // Nice-to-have: render an optional gallery description from
-    // metadata/description.md, without blocking photo rendering above.
-    fetchGalleryDescription(result.items, token).then(renderGalleryDescription);
+    renderGallery(photos, descriptions.byDate);
+    plotPhotosOnMap(photos);
+    renderGalleryDescription(descriptions.global);
   } catch (err) {
     showError('Unexpected error: ' + err.message);
   } finally {

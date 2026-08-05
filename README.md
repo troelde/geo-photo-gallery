@@ -107,10 +107,10 @@ position:
   lat: 78.22334
   long: 15.6482
 description: Arrival day in Longyearbyen
-date: 2025-06-15
+date: 2025-06-15T14:30
 ```
 
-All fields are optional and independent — include only what you need. The sidecar is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
+`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need. The sidecar is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
 
 ---
 

@@ -165,8 +165,9 @@ async function fetchDescriptions(rootItems, token) {
  *     shows up on the map;
  *   - a `description` string is used as the photo's subtitle when
  *     OneDrive itself has no description set for that file;
- *   - a `date` string (`YYYY-MM-DD`) is used as the photo's taken date
- *     (for date-grouping/sorting) when it has no EXIF taken date.
+ *   - a `date` string (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) is used as the
+ *     photo's taken date/time (for date-grouping/sorting) when it has no
+ *     EXIF taken date.
  *  None of these ever override real OneDrive/EXIF data -- only fills gaps.
  *  Mutates matching photo objects in place; a no-op when nothing matches
  *  or the YAML library isn't loaded. */
@@ -219,16 +220,26 @@ async function applyYamlFallbacks(photos, rootItems, token) {
         }
 
         if (!photo.photo?.takenDateTime && data?.date != null) {
-          let isoDate = null;
+          let isoDateTime = null;
           if (data.date instanceof Date && !isNaN(data.date)) {
-            // js-yaml parses unquoted YYYY-MM-DD scalars as Date objects.
-            isoDate = data.date.toISOString().slice(0, 10);
+            // js-yaml parses unquoted timestamps that include seconds
+            // (e.g. YYYY-MM-DDTHH:MM:SS) as Date objects rather than
+            // strings.
+            isoDateTime = data.date.toISOString();
           } else if (typeof data.date === 'string') {
-            const match = data.date.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-            if (match) isoDate = match[0];
+            // Accepts "YYYY-MM-DD" (date only) or "YYYY-MM-DDTHH:MM"
+            // (date + time, no seconds) — both stay strings under
+            // js-yaml since neither matches its full timestamp regex.
+            const match = data.date
+              .trim()
+              .match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?$/);
+            if (match) {
+              const [, datePart, timePart] = match;
+              isoDateTime = `${datePart}T${timePart ?? '00:00'}:00Z`;
+            }
           }
-          if (isoDate) {
-            photo.photo = { ...photo.photo, takenDateTime: `${isoDate}T00:00:00Z` };
+          if (isoDateTime) {
+            photo.photo = { ...photo.photo, takenDateTime: isoDateTime };
           }
         }
       } catch {

@@ -156,16 +156,18 @@ async function fetchDescriptions(rootItems, token) {
   }
 }
 
-/** For photos missing GPS EXIF metadata and/or a OneDrive description,
- *  look for a sidecar YAML file named exactly `<photo filename>.yaml`
- *  (e.g. `IMG_1234.jpg.yaml`) next to the photo in the shared folder.
- *  If found:
+/** For photos missing GPS EXIF metadata, a OneDrive description, and/or a
+ *  taken date, look for a sidecar YAML file named exactly
+ *  `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next to the photo
+ *  in the shared folder. If found:
  *   - a `position` dict with `lat`/`long` (or `latitude`/`longitude`,
  *     decimal degrees) is used as a GPS fallback so the photo still
  *     shows up on the map;
  *   - a `description` string is used as the photo's subtitle when
- *     OneDrive itself has no description set for that file.
- *  Neither ever overrides real OneDrive/EXIF data -- only fills gaps.
+ *     OneDrive itself has no description set for that file;
+ *   - a `date` string (`YYYY-MM-DD`) is used as the photo's taken date
+ *     (for date-grouping/sorting) when it has no EXIF taken date.
+ *  None of these ever override real OneDrive/EXIF data -- only fills gaps.
  *  Mutates matching photo objects in place; a no-op when nothing matches
  *  or the YAML library isn't loaded. */
 async function applyYamlFallbacks(photos, rootItems, token) {
@@ -181,7 +183,8 @@ async function applyYamlFallbacks(photos, rootItems, token) {
   const needsFallback = photos.filter(
     (p) =>
       !(p.location?.latitude != null && p.location?.longitude != null) ||
-      !p.description
+      !p.description ||
+      !p.photo?.takenDateTime
   );
 
   await Promise.all(
@@ -213,6 +216,20 @@ async function applyYamlFallbacks(photos, rootItems, token) {
 
         if (!photo.description && typeof data?.description === 'string') {
           photo.description = data.description;
+        }
+
+        if (!photo.photo?.takenDateTime && data?.date != null) {
+          let isoDate = null;
+          if (data.date instanceof Date && !isNaN(data.date)) {
+            // js-yaml parses unquoted YYYY-MM-DD scalars as Date objects.
+            isoDate = data.date.toISOString().slice(0, 10);
+          } else if (typeof data.date === 'string') {
+            const match = data.date.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) isoDate = match[0];
+          }
+          if (isoDate) {
+            photo.photo = { ...photo.photo, takenDateTime: `${isoDate}T00:00:00Z` };
+          }
         }
       } catch {
         // Malformed YAML or fetch failure -- fallback is best-effort.
@@ -741,8 +758,8 @@ async function loadPhotos() {
 
     // Look for optional metadata/description.md (gallery-wide) and
     // metadata/YYYYMMDD-description.md (per-day) files, and for per-photo
-    // <filename>.yaml sidecars providing GPS/description fallbacks, before
-    // rendering.
+    // <filename>.yaml sidecars providing GPS/description/date fallbacks,
+    // before rendering.
     const [descriptions] = await Promise.all([
       fetchDescriptions(result.items, token),
       applyYamlFallbacks(photos, result.items, token),

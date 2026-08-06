@@ -31,7 +31,12 @@
   </div>
   <div id="admin-error" class="error-banner" hidden></div>
 
-  <section id="admin-description-section" hidden>
+  <nav id="admin-tabs" hidden>
+    <button type="button" class="admin-tab-btn active" data-tab="photos">📷 Photos</button>
+    <button type="button" class="admin-tab-btn" data-tab="description">📝 Gallery Description</button>
+  </nav>
+
+  <section id="admin-description-section" class="admin-tab-panel" hidden>
     <h2>Gallery Description (<code>metadata/description.md</code>)</h2>
     <p class="subtle">
       Shown at the top of the public gallery, above the photos. Supports
@@ -57,7 +62,7 @@
     </div>
   </section>
 
-  <div id="admin-main" hidden>
+  <div id="admin-main" class="admin-tab-panel" hidden>
     <!-- Left pane: photo list -->
     <section id="admin-photo-pane">
       <input

@@ -53,6 +53,9 @@ let centralizedData = {};
 let galleryDescriptionText = '';
 let lastSavedDescriptionText = '';
 
+// Which top-level tab ("photos" or "description") is currently shown.
+let activeTab = 'photos';
+
 // ---- Share URL / Graph fetch ---------------------------------
 
 /** Encode a OneDrive share URL into the Graph API shareId format. */
@@ -322,6 +325,19 @@ function updateAuthUI(account) {
 
 function showLoading(visible) {
   document.getElementById('admin-loading').hidden = !visible;
+}
+
+/** Switches between the "photos" and "description" top-level tabs.
+ *  Both panels are always fully loaded together (see loadAdminData);
+ *  this only toggles which one is visible and highlights the active
+ *  tab button. */
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById('admin-main').hidden = tab !== 'photos';
+  document.getElementById('admin-description-section').hidden = tab !== 'description';
+  document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
 }
 
 function showError(msg) {
@@ -914,9 +930,9 @@ async function loadAdminData() {
     lastSavedDescriptionText = galleryDescriptionText;
     document.getElementById('admin-description-text').value = galleryDescriptionText;
     renderDescriptionPreview();
-    document.getElementById('admin-description-section').hidden = false;
 
-    document.getElementById('admin-main').hidden = false;
+    document.getElementById('admin-tabs').hidden = false;
+    switchTab(activeTab);
     renderPhotoList();
   } catch (err) {
     showError('Unexpected error: ' + err.message);
@@ -941,6 +957,9 @@ document.getElementById('admin-description-text').addEventListener('input', () =
   descriptionStatus('');
 });
 document.getElementById('admin-description-save-btn').addEventListener('click', handleSaveDescription);
+document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
 window.addEventListener('beforeunload', (e) => {
   const current = document.getElementById('admin-description-text')?.value;
   if (current != null && current !== lastSavedDescriptionText) {

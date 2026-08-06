@@ -38,6 +38,39 @@
   border-radius: 4px;
 }
 
+/* ---- Tab navigation ---- */
+#admin-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  margin: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+#admin-tabs[hidden] {
+  display: none;
+}
+.admin-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.admin-tab-btn:hover {
+  color: var(--text);
+}
+.admin-tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.admin-tab-panel[hidden] {
+  display: none;
+}
+
 #admin-main {
   display: grid;
   grid-template-columns: minmax(220px, 320px) 1fr;

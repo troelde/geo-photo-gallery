@@ -134,7 +134,7 @@ Both the gallery (`app.js`) and the **Admin App** currently read/write **both** 
 - **Reading**: for each photo, `metadata/photos.yaml` is checked first; if that photo has no entry there yet, the legacy per-photo `<name>.yaml` sidecar is used as a fallback. This means existing sidecars keep working untouched — nothing needs to be migrated by hand.
 - **Writing** (via the Admin App): Save/Remove overrides always update **both** the individual `<name>.yaml` sidecar and that photo's entry in `metadata/photos.yaml`, so the two stay in sync automatically as you edit photos. The centralized file (and its `metadata/` folder, if missing) is created automatically on first save.
 
-Once every photo you care about has been edited at least once (or you've otherwise migrated its data into `metadata/photos.yaml` by hand), the old per-photo `<name>.yaml` sidecars become redundant and can be deleted — the gallery will keep working from the centralized file alone.
+Once every photo you care about has been edited at least once (or bulk-migrated with the Admin App's "Consolidate sidecars" button — see below), the old per-photo `<name>.yaml` sidecars become redundant and can be deleted — the gallery will keep working from the centralized file alone.
 
 ---
 
@@ -147,6 +147,7 @@ Once every photo you care about has been edited at least once (or you've otherwi
 - Pick a photo from the filterable list on the left (a small dot badge marks photos that already have overrides, from either source). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the Latitude/Longitude, Description, and Date/Time overrides.
 - **Save** writes the form's fields to both the per-photo `<name>.yaml` sidecar and the photo's entry in `metadata/photos.yaml` (it does not preserve other custom YAML keys from a hand-edited sidecar). Leave a field blank to omit it.
 - **Remove overrides** deletes the per-photo sidecar (if any) and the photo's centralized entry (if any).
+- **Consolidate sidecars → metadata/photos.yaml** (button above the photo list) is a one-time bulk migration: it reads every existing per-photo sidecar that doesn't already have a centralized entry and copies its data in. It's safe to click more than once — photos already present centrally are left untouched, and the original sidecar files are never deleted (only copied).
 
 > ⚠️ The admin app requests the `Files.ReadWrite` Graph scope (read-only `Files.Read` is not enough to write files), so the **first sign-in triggers a fresh Microsoft consent prompt**, even if you've already signed into the main gallery. You'll also need to add `admin.html`'s URL (e.g. `http://localhost:8080/admin.html` and your deployed `.../admin.html`) as an additional **Redirect URI** in your Azure App Registration, the same way you did for `index.html`.
 

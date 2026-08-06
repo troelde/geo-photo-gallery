@@ -623,6 +623,69 @@ async function handleDelete() {
   }
 }
 
+// ---- One-time sidecar → centralized consolidation ------------------
+
+/** One-time bulk migration: reads every existing per-photo <name>.yaml
+ *  sidecar and copies its data into the in-memory centralizedData map,
+ *  then writes the merged result to metadata/photos.yaml. Skips any
+ *  photo that already has a centralized entry, so it's safe to run
+ *  more than once (e.g. after adding new sidecars) without clobbering
+ *  edits already made centrally. Individual sidecar files are left in
+ *  place -- this only copies, it doesn't delete them. */
+async function consolidateAllSidecars() {
+  if (!lastAccessToken) return;
+
+  const btn = document.getElementById('admin-consolidate-btn');
+  const statusEl = document.getElementById('admin-consolidate-status');
+  btn.disabled = true;
+  statusEl.textContent = 'Scanning sidecar files…';
+
+  try {
+    const candidates = photos.filter(
+      (p) => getSidecarItem(p) && centralizedKeyFor(p) == null
+    );
+
+    if (!candidates.length) {
+      statusEl.textContent = 'Nothing to consolidate — every sidecar is already in metadata/photos.yaml.';
+      return;
+    }
+
+    let migrated = 0;
+    let failed = 0;
+
+    await Promise.all(
+      candidates.map(async (photo) => {
+        const yamlItem = getSidecarItem(photo);
+        const data = await fetchSidecarData(yamlItem, lastAccessToken);
+        if (data) {
+          centralizedData[photo.name] = data;
+          migrated++;
+        } else {
+          failed++;
+        }
+      })
+    );
+
+    if (migrated > 0) {
+      statusEl.textContent = `Writing ${migrated} entr${migrated === 1 ? 'y' : 'ies'} to metadata/photos.yaml…`;
+      const ok = await saveCentralizedMetadata();
+      statusEl.textContent = ok
+        ? `Consolidated ${migrated} sidecar${migrated === 1 ? '' : 's'} into metadata/photos.yaml ✓` +
+          (failed ? ` (${failed} failed to read, skipped)` : '')
+        : `Read ${migrated} sidecar${migrated === 1 ? '' : 's'}, but writing metadata/photos.yaml failed — try again.`;
+      renderPhotoList(document.getElementById('admin-filter').value);
+      // Refresh the currently-open photo's form in case it was just migrated.
+      if (selectedPhoto) selectPhoto(selectedPhoto);
+    } else {
+      statusEl.textContent = `Could not read any of the ${candidates.length} sidecar file(s) found — try again.`;
+    }
+  } catch (err) {
+    statusEl.textContent = 'Consolidation failed: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---- Main load ----------------------------------------------------
 
 async function loadAdminData() {
@@ -697,6 +760,7 @@ document.getElementById('admin-signin-btn').addEventListener('click', signIn);
 document.getElementById('admin-signout-btn').addEventListener('click', signOut);
 document.getElementById('admin-sidecar-form').addEventListener('submit', handleSave);
 document.getElementById('admin-delete-btn').addEventListener('click', handleDelete);
+document.getElementById('admin-consolidate-btn').addEventListener('click', consolidateAllSidecars);
 document.getElementById('admin-filter').addEventListener('input', (e) => {
   renderPhotoList(e.target.value);
 });

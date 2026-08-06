@@ -146,6 +146,20 @@
 }
 .admin-info-box code { color: var(--text); font-weight: 500; }
 
+#admin-consolidate-box {
+  margin-bottom: 0;
+}
+#admin-consolidate-box .btn {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 0.5rem 0.6rem;
+}
+#admin-consolidate-status {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
+#admin-consolidate-status:empty { display: none; }
+
 #admin-exif-fields {
   margin: 0;
   display: grid;

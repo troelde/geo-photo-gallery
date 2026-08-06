@@ -156,31 +156,28 @@ async function fetchDescriptions(rootItems, token) {
   }
 }
 
-/** Applies GPS/description/date fallback fields from a parsed YAML
- *  data object (either a centralized metadata entry or an individual
- *  sidecar file's content -- both use the same shape) onto a photo,
- *  in place. Never overrides real EXIF/OneDrive data -- only fills
- *  gaps. Shared by both fallback sources so their parsing logic (and
- *  the js-yaml Date-vs-string quirks) stays in exactly one place. */
+/** Applies GPS/description/date override fields from a parsed YAML
+ *  data object (the centralized metadata/photos.yaml entry) onto a
+ *  photo, in place. Any field present (non-null) in the YAML data
+ *  overrides the photo's real EXIF/OneDrive value for that field --
+ *  this lets photos.yaml both fill gaps (missing EXIF) and correct
+ *  wrong/undesired EXIF data. Fields omitted from the YAML entry are
+ *  left untouched. */
 function applyYamlFallbackFields(photo, data) {
   if (!data) return;
 
   const pos = data.position ?? {};
   const lat = pos.lat ?? pos.latitude;
   const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
-  if (
-    !(photo.location?.latitude != null && photo.location?.longitude != null) &&
-    typeof lat === 'number' &&
-    typeof lon === 'number'
-  ) {
+  if (typeof lat === 'number' && typeof lon === 'number') {
     photo.location = { latitude: lat, longitude: lon };
   }
 
-  if (!photo.description && typeof data.description === 'string') {
+  if (typeof data.description === 'string') {
     photo.description = data.description;
   }
 
-  if (!photo.photo?.takenDateTime && data.date != null) {
+  if (data.date != null) {
     let isoDateTime = null;
     if (data.date instanceof Date && !isNaN(data.date)) {
       // js-yaml parses unquoted timestamps that include seconds
@@ -236,20 +233,19 @@ async function fetchCentralizedMetadata(rootItems, token) {
   }
 }
 
-/** For photos missing GPS EXIF metadata, a OneDrive description, and/or a
- *  taken date, looks up fallback data in the centralized
- *  metadata/photos.yaml file (see fetchCentralizedMetadata). Per-photo
- *  entries can provide:
+/** Looks up per-photo overrides in the centralized metadata/photos.yaml
+ *  file (see fetchCentralizedMetadata) and applies them onto matching
+ *  photos, in place. Per-photo entries can provide:
  *   - a `position` dict with `lat`/`long` (or `latitude`/`longitude`,
- *     decimal degrees) used as a GPS fallback so the photo still shows
- *     up on the map;
- *   - a `description` string used as the photo's subtitle when
- *     OneDrive itself has no description set for that file;
+ *     decimal degrees) used as the photo's GPS location so it shows up
+ *     on the map;
+ *   - a `description` string used as the photo's subtitle;
  *   - a `date` string (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) used as the
- *     photo's taken date/time (for date-grouping/sorting) when it has
- *     no EXIF taken date.
- *  None of these ever override real OneDrive/EXIF data -- only fills
- *  gaps. Mutates matching photo objects in place. */
+ *     photo's taken date/time (for date-grouping/sorting).
+ *  Any of these present (non-null) in a photo's YAML entry overrides
+ *  that photo's real OneDrive/EXIF value for the same field -- this
+ *  both fills gaps (missing EXIF) and lets you correct wrong/undesired
+ *  EXIF data. Fields omitted from the YAML entry are left untouched. */
 function applyYamlFallbacks(photos, centralizedData) {
   const centralizedByName = new Map(
     Object.keys(centralizedData || {}).map((name) => [
@@ -786,7 +782,7 @@ async function loadPhotos() {
     // Look for optional metadata/description.md (gallery-wide) and
     // metadata/YYYYMMDD-description.md (per-day) files, and the
     // centralized metadata/photos.yaml file providing per-photo
-    // GPS/description/date fallbacks, before rendering.
+    // GPS/description/date overrides, before rendering.
     const [descriptions, centralizedData] = await Promise.all([
       fetchDescriptions(result.items, token),
       fetchCentralizedMetadata(result.items, token),

@@ -78,7 +78,7 @@ Sign-in uses [MSAL.js](https://github.com/AzureAD/microsoft-authentication-libra
 | Gallery & per-day descriptions | Optional Markdown files in a `metadata` subfolder are rendered above the gallery and/or under each date heading (see below) |
 | Map view | GPS-tagged photos plotted as thumbnail pins, with a layer switcher for Topographic (OpenTopoMap), Streets (OSM), and Satellite (Esri) |
 | No-GPS handling | A legend shows how many photos lack GPS data; those are still browsable in the Gallery |
-| YAML metadata fallback | An entry in the centralized `metadata/photos.yaml` file can supply GPS coordinates, a description, and/or a taken date for a photo when OneDrive doesn't already have them (see below) |
+| YAML metadata overrides | An entry in the centralized `metadata/photos.yaml` file can supply or override GPS coordinates, a description, and/or a taken date for a photo, even replacing existing OneDrive/EXIF values (see below) |
 | Sticky header/tabs | The title bar and Gallery/Map tabs stay pinned while scrolling |
 | Pagination | Automatically fetches all pages from Graph (>200 photos) |
 | No build tools | Plain HTML/CSS/JS, zero dependencies to install |
@@ -98,7 +98,7 @@ Both support standard Markdown (headings, bold/italic, links, lists, etc.), rend
 
 ---
 
-## GPS, Description & Date Fallback via metadata/photos.yaml
+## GPS, Description & Date Overrides via metadata/photos.yaml
 
 If a photo has no GPS location in its EXIF data, no description set in OneDrive, and/or no taken date in its metadata, you can supply any of these manually via a single centralized YAML file, `metadata/photos.yaml`, inside the shared OneDrive folder — one YAML mapping of `<photo filename>: { position, description, date }` entries for the whole gallery:
 
@@ -113,7 +113,7 @@ IMG_5678.jpg:
   description: Just a caption, no GPS/date override needed
 ```
 
-`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need per photo. This data is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
+`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need per photo. Any field present in a photo's entry **overrides** its real EXIF GPS location, OneDrive description, or EXIF taken date, even if OneDrive/EXIF already has a value — this lets you both fill gaps (e.g. scanned photos, screenshots, or camera gear that doesn't record GPS/dates) and correct wrong or undesired metadata. Fields you omit from an entry are left untouched (the photo's real EXIF/OneDrive value is used as-is).
 
 You can hand-edit `metadata/photos.yaml` directly in OneDrive, or use the **Admin App** below for a form-based UI. The file (and its `metadata/` folder, if missing) is created automatically on first save from the Admin App.
 

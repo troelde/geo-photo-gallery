@@ -108,6 +108,28 @@ async function fetchSidecarData(yamlItem, token) {
   }
 }
 
+/** Fetches the full-resolution direct download URL for a single photo,
+ *  since the shared-folder children listing doesn't reliably include
+ *  @microsoft.graph.downloadUrl. Mirrors app.js's fetchFullResUrl. */
+async function fetchFullResUrl(photo, token) {
+  const driveId = photo.parentReference?.driveId;
+  if (!driveId || !token) return null;
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${driveId}/items/${photo.id}` +
+      `?$select=@microsoft.graph.downloadUrl`;
+    const resp = await fetch(url, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data['@microsoft.graph.downloadUrl'] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---- MSAL Auth (mirrors app.js's redirect-flow pattern) --------
 
 function initMsal() {
@@ -356,8 +378,8 @@ async function selectPhoto(photo) {
   document.getElementById('admin-detail-content').hidden = false;
   formStatus('', null);
 
-  document.getElementById('admin-detail-thumb').src =
-    photo.thumbnails?.[0]?.medium?.url ?? '';
+  const thumbEl = document.getElementById('admin-detail-thumb');
+  thumbEl.src = photo.thumbnails?.[0]?.medium?.url ?? '';
   document.getElementById('admin-detail-filename').textContent = photo.name;
   document.getElementById('admin-sidecar-filename').textContent = `${photo.name}.yaml`;
   document.getElementById('admin-delete-btn').hidden = !selectedYamlItem;
@@ -370,6 +392,14 @@ async function selectPhoto(photo) {
     // Guard against the user having clicked a different photo while
     // this fetch was in flight.
     if (selectedPhoto === photo) populateForm(data);
+  }
+
+  // Swap in the full-resolution original once fetched, so the preview
+  // isn't limited to OneDrive's small "medium" thumbnail size.
+  if (lastAccessToken) {
+    fetchFullResUrl(photo, lastAccessToken).then((url) => {
+      if (url && selectedPhoto === photo) thumbEl.src = url;
+    });
   }
 }
 

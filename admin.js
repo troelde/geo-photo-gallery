@@ -303,6 +303,84 @@ function hasOverride(photo) {
   return centralizedKeyFor(photo) != null;
 }
 
+/** Same weekday/month/day formatting as the public gallery's date
+ *  group headings, for visual consistency between the two apps. */
+function formatDateGroup(date) {
+  return date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/** The date used to group a photo, mirroring what the public gallery
+ *  actually displays: the photo's centralized metadata/photos.yaml
+ *  `date` override if it has one, else its real EXIF/OneDrive taken
+ *  date, else null (grouped under "Unknown date"). Duplicates the
+ *  date-string/Date-object parsing from applyYamlFallbackFields in
+ *  app.js (same js-yaml quirks -- unquoted timestamps with seconds
+ *  parse as Date objects, date-only/date+HH:MM stay strings). */
+function effectiveTakenDate(photo) {
+  const centralKey = centralizedKeyFor(photo);
+  const entryDate = centralKey != null ? centralizedData[centralKey]?.date : null;
+
+  if (entryDate != null) {
+    if (entryDate instanceof Date && !isNaN(entryDate)) return entryDate;
+    if (typeof entryDate === 'string') {
+      const match = entryDate.trim().match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?$/);
+      if (match) {
+        const [, datePart, timePart] = match;
+        return new Date(`${datePart}T${timePart ?? '00:00'}:00Z`);
+      }
+    }
+  }
+
+  return photo.photo?.takenDateTime ? new Date(photo.photo.takenDateTime) : null;
+}
+
+/** Groups photos by calendar day (falls back to "Unknown date"),
+ *  sorted chronologically oldest-day-first, with photos within each
+ *  day sorted oldest-first -- mirroring groupItemsByDate in app.js so
+ *  the admin list matches the public gallery's grouping. */
+function groupPhotosByDate(photoList) {
+  const groups = new Map(); // key -> { key, label, date, items }
+
+  photoList.forEach((photo) => {
+    const taken = effectiveTakenDate(photo);
+    let key = 'unknown';
+    let date = null;
+    let label = 'Unknown date';
+
+    if (taken && !isNaN(taken)) {
+      key = taken.toISOString().slice(0, 10);
+      date = taken;
+      label = formatDateGroup(taken);
+    }
+
+    if (!groups.has(key)) groups.set(key, { key, label, date, items: [] });
+    groups.get(key).items.push(photo);
+  });
+
+  groups.forEach((group) => {
+    group.items.sort((a, b) => {
+      const ta = effectiveTakenDate(a);
+      const tb = effectiveTakenDate(b);
+      if (!ta && !tb) return 0;
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return ta - tb;
+    });
+  });
+
+  return [...groups.values()].sort((a, b) => {
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return a.date - b.date;
+  });
+}
+
 function renderPhotoList(filterText = '') {
   const list = document.getElementById('admin-photo-list');
   const countEl = document.getElementById('admin-photo-count');
@@ -315,19 +393,30 @@ function renderPhotoList(filterText = '') {
   countEl.textContent = `${filtered.length} of ${photos.length} photos`;
 
   list.innerHTML = '';
-  filtered.forEach((photo) => {
-    const li = document.createElement('li');
-    li.className = 'admin-photo-item';
-    if (photo === selectedPhoto) li.classList.add('active');
+  const groups = groupPhotosByDate(filtered);
 
-    const thumbUrl = photo.thumbnails?.[0]?.medium?.url ?? '';
-    li.innerHTML = `
-      <img src="${thumbUrl}" alt="" loading="lazy" />
-      <span class="admin-photo-name">${escapeHtml(photo.name)}</span>
-      ${hasOverride(photo) ? '<span class="admin-sidecar-badge" title="Has metadata overrides"></span>' : ''}
-    `;
-    li.addEventListener('click', () => selectPhoto(photo));
-    list.appendChild(li);
+  groups.forEach((group) => {
+    const heading = document.createElement('li');
+    heading.className = 'admin-date-heading';
+    heading.textContent = `${group.label} · ${group.items.length} photo${
+      group.items.length !== 1 ? 's' : ''
+    }`;
+    list.appendChild(heading);
+
+    group.items.forEach((photo) => {
+      const li = document.createElement('li');
+      li.className = 'admin-photo-item';
+      if (photo === selectedPhoto) li.classList.add('active');
+
+      const thumbUrl = photo.thumbnails?.[0]?.medium?.url ?? '';
+      li.innerHTML = `
+        <img src="${thumbUrl}" alt="" loading="lazy" />
+        <span class="admin-photo-name">${escapeHtml(photo.name)}</span>
+        ${hasOverride(photo) ? '<span class="admin-sidecar-badge" title="Has metadata overrides"></span>' : ''}
+      `;
+      li.addEventListener('click', () => selectPhoto(photo));
+      list.appendChild(li);
+    });
   });
 }
 

@@ -292,7 +292,7 @@
   color: #fca5a5;
 }
 
-/* ---- Gallery description editor ---- */
+/* ---- Gallery description editor (shared with per-day editor below) --- */
 #admin-description-section {
   display: flex;
   flex-direction: column;
@@ -314,7 +314,7 @@
 #admin-description-section > p.subtle {
   flex-shrink: 0;
 }
-#admin-description-editor {
+.admin-md-editor {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
@@ -336,7 +336,7 @@
   letter-spacing: 0.03em;
   flex-shrink: 0;
 }
-#admin-description-text {
+.admin-md-textarea {
   width: 100%;
   flex: 1;
   min-height: 14rem;
@@ -365,20 +365,110 @@
   color: var(--muted);
   font-style: italic;
 }
-#admin-description-actions {
+.admin-md-actions {
   margin-top: 0.75rem;
   flex-shrink: 0;
 }
 
+/* ---- Per-day description tab (list + detail, mirroring #admin-main) --- */
+#admin-daydesc-section {
+  padding: 0 1.5rem 2rem;
+}
+#admin-daydesc-section[hidden] {
+  display: none;
+}
+#admin-daydesc-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+#admin-daydesc-list-pane {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: calc(100vh - 12rem);
+}
+#admin-daydesc-count {
+  flex-shrink: 0;
+}
+#admin-daydesc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.admin-daydesc-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.admin-daydesc-item:last-child { border-bottom: none; }
+.admin-daydesc-item:hover { background: rgba(255, 255, 255, 0.05); }
+.admin-daydesc-item.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-left: 3px solid var(--accent);
+}
+.admin-daydesc-item .admin-daydesc-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-daydesc-item .admin-daydesc-item-count {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.admin-daydesc-exists-badge {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+#admin-daydesc-detail-pane {
+  min-height: 20rem;
+  display: flex;
+  flex-direction: column;
+}
+#admin-daydesc-content {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 12rem);
+}
+#admin-daydesc-content[hidden] {
+  display: none;
+}
+#admin-daydesc-heading {
+  font-size: 1.1rem;
+  margin: 0 0 0.25rem;
+  flex-shrink: 0;
+}
+#admin-daydesc-file-status {
+  flex-shrink: 0;
+  margin-bottom: 0.5rem;
+}
+
 @media (max-width: 720px) {
-  #admin-main {
+  #admin-main,
+  #admin-daydesc-main {
     grid-template-columns: 1fr;
   }
-  #admin-photo-pane {
+  #admin-photo-pane,
+  #admin-daydesc-list-pane {
     position: static;
     max-height: 16rem;
   }
-  #admin-description-editor {
+  .admin-md-editor {
     grid-template-columns: 1fr;
   }
 }

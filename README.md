@@ -96,7 +96,7 @@ You can add optional Markdown files to a `metadata` subfolder inside your shared
 
 Both support standard Markdown (headings, bold/italic, links, lists, etc.), rendered client-side with [marked.js](https://marked.js.org/). Links always open in a new tab so readers don't navigate away from the gallery. Files are optional — omit either or both if you don't need them.
 
-You can hand-edit `metadata/description.md` directly in OneDrive, or edit and preview it from the **Admin App**'s "Gallery Description" panel (see below) — per-day description files (`metadata/YYYYMMDD-description.md`) currently still need to be created/edited directly in OneDrive.
+You can hand-edit `metadata/description.md` and `metadata/YYYYMMDD-description.md` directly in OneDrive, or edit (and create missing per-day files) from the **Admin App**'s "Gallery Description" and "Day Descriptions" tabs (see below).
 
 ---
 
@@ -127,8 +127,9 @@ You can hand-edit `metadata/photos.yaml` directly in OneDrive, or use the **Admi
 
 - Open it by navigating to it directly, e.g. `https://troelde.github.io/geo-photo-gallery/admin.html` (or `admin.html` locally). It supports the same `?shareUrl=` override as the gallery.
 - Sign in with the **OneDrive account that owns** the shared folder — writing files only works if that account actually has edit rights on the drive.
-- The app has two tabs: **📷 Photos** and **📝 Gallery Description**.
+- The app has three tabs: **📷 Photos**, **📝 Gallery Description**, and **🗓️ Day Descriptions**.
 - **Gallery Description tab**: edit the overall gallery intro (`metadata/description.md`) in a Markdown textarea with a live-updating rendered preview alongside it, and save it back to OneDrive with **Save description**.
+- **Day Descriptions tab**: lists every calendar day that has at least one photo (grouped the same way as the Photos tab, using `photos.yaml` date overrides where set), with a dot badge marking days that already have a `metadata/YYYYMMDD-description.md` file. Selecting a day opens the same split Markdown/preview editor — if that day's file doesn't exist yet, the editor starts empty and **Save description** *creates* `metadata/YYYYMMDD-description.md` for that date; if it already exists, Save just updates it.
 - **Photos tab**: pick a photo from the filterable list on the left, grouped by date taken (using its `photos.yaml` date override if set, else its real EXIF/OneDrive taken date, same as the public gallery) — a small dot badge marks photos that already have overrides. The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the Latitude/Longitude, Description, and Date/Time overrides.
 - **Position picker map**: instead of typing decimal coordinates, click anywhere on the small map under the Position fields to drop/move a pin (the Latitude/Longitude fields update automatically), or drag the pin to fine-tune it. Right-click the map or the pin (long-press on touch) to clear the position. The map centers on the photo's existing override position if set, otherwise on its real EXIF GPS location for reference, if it has one.
 - **Save** writes the form's fields to that photo's entry in `metadata/photos.yaml`. Leave a field blank to omit it.

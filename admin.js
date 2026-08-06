@@ -53,7 +53,19 @@ let centralizedData = {};
 let galleryDescriptionText = '';
 let lastSavedDescriptionText = '';
 
-// Which top-level tab ("photos" or "description") is currently shown.
+// Per-day descriptions (metadata/YYYYMMDD-description.md), one per
+// calendar day that has at least one photo. dayDescriptionDates is the
+// list of candidate days derived from the photos themselves;
+// dayDescriptionTexts maps 'YYYY-MM-DD' -> saved text (only present if
+// the file already exists in OneDrive -- missing entries mean "not
+// created yet", and Save will create the file).
+let dayDescriptionDates = []; // [{ key, label, photoCount }]
+let dayDescriptionTexts = {}; // 'YYYY-MM-DD' -> existing text
+let selectedDayKey = null;
+let lastSavedDayText = '';
+
+// Which top-level tab ("photos", "description", or "daydesc") is
+// currently shown.
 let activeTab = 'photos';
 
 // ---- Share URL / Graph fetch ---------------------------------
@@ -208,6 +220,92 @@ async function saveGalleryDescription(text) {
   }
 }
 
+/** Converts a 'YYYY-MM-DD' date key to the compact YYYYMMDD form used
+ *  in per-day description filenames (see the matching regex in
+ *  app.js's fetchDescriptions). */
+function compactDateKey(dateKey) {
+  return dateKey.replace(/-/g, '');
+}
+
+/** Fetches every existing metadata/YYYYMMDD-description.md file's
+ *  content (see the matching function in app.js -- same file/shape:
+ *  plain Markdown text per calendar day). Returns a
+ *  Map<'YYYY-MM-DD', string>; days with no file simply have no entry
+ *  (missing folder/files or any failure just yields an empty map --
+ *  best-effort, same as app.js). */
+async function fetchDayDescriptions(rootItems, token) {
+  const empty = new Map();
+  const metadataFolder = rootItems.find(
+    (i) => i.folder && i.name?.toLowerCase() === 'metadata'
+  );
+  const driveId = metadataFolder?.parentReference?.driveId;
+  if (!metadataFolder || !driveId || !token) return empty;
+
+  try {
+    const childrenUrl =
+      `${GRAPH_API}/drives/${driveId}/items/${metadataFolder.id}/children` +
+      `?$select=id,name,file&$top=200`;
+    const childrenResp = await fetch(childrenUrl, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!childrenResp.ok) return empty;
+    const childrenData = await childrenResp.json();
+    const files = (childrenData.value ?? []).filter((c) => c.file);
+
+    const dateFileRegex = /^(\d{8})-description\.md$/i;
+    const matches = files
+      .map((c) => ({ file: c, match: c.name?.match(dateFileRegex) }))
+      .filter((x) => x.match);
+
+    const texts = await Promise.all(
+      matches.map(async (x) => {
+        const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${x.file.id}/content`;
+        const resp = await fetch(contentUrl, {
+          headers: { Authorization: 'Bearer ' + token },
+        });
+        return resp.ok ? await resp.text() : '';
+      })
+    );
+
+    const map = new Map();
+    matches.forEach((x, i) => {
+      const raw = x.match[1]; // YYYYMMDD
+      const key = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+      map.set(key, texts[i]);
+    });
+    return map;
+  } catch {
+    return empty;
+  }
+}
+
+/** Writes the given Markdown text to metadata/YYYYMMDD-description.md
+ *  for the given 'YYYY-MM-DD' date key. Path-addressing this write
+ *  auto-creates the metadata/ folder and/or the file itself if either
+ *  doesn't exist yet -- so this both creates missing per-day files and
+ *  updates existing ones. Returns true on success. */
+async function saveDayDescription(dateKey, text) {
+  const root = getRootRef();
+  if (!root || !lastAccessToken) return false;
+
+  try {
+    const filename = `${compactDateKey(dateKey)}-description.md`;
+    const url =
+      `${GRAPH_API}/drives/${root.driveId}/items/${root.rootId}:/metadata/${filename}:/content`;
+    const resp = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + lastAccessToken,
+        'Content-Type': 'text/markdown',
+      },
+      body: text,
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Finds this photo's key in centralizedData (case-insensitive match
  *  against the map's own keys), or null if it has no centralized
  *  entry. */
@@ -335,6 +433,7 @@ function switchTab(tab) {
   activeTab = tab;
   document.getElementById('admin-main').hidden = tab !== 'photos';
   document.getElementById('admin-description-section').hidden = tab !== 'description';
+  document.getElementById('admin-daydesc-section').hidden = tab !== 'daydesc';
   document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -419,6 +518,117 @@ async function handleSaveDescription() {
     }
   } catch (err) {
     descriptionStatus('Save failed: ' + err.message, 'error');
+  } finally {
+    saveBtn.disabled = false;
+  }
+}
+
+// ---- Per-day description editor ----------------------------------
+
+function dayDescStatus(message, kind) {
+  const el = document.getElementById('admin-daydesc-status');
+  el.textContent = message;
+  el.className = 'admin-status' + (kind ? ` ${kind}` : '');
+  el.hidden = !message;
+}
+
+/** Derives the list of candidate per-day description files: one entry
+ *  per distinct calendar day among the loaded photos (using the same
+ *  effective-date/grouping logic as the photo list), oldest day
+ *  first. Photos with no determinable date ("Unknown date") are
+ *  excluded -- there's no single YYYYMMDD to file them under. */
+function computeDayDescriptionDates() {
+  return groupPhotosByDate(photos)
+    .filter((group) => group.date)
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      photoCount: group.items.length,
+    }));
+}
+
+/** Re-renders the live Markdown preview for the currently selected
+ *  day's textarea contents. */
+function renderDayDescPreview() {
+  const preview = document.getElementById('admin-daydesc-preview');
+  const text = document.getElementById('admin-daydesc-text').value;
+  if (!text.trim() || typeof marked === 'undefined') {
+    preview.innerHTML = '';
+    return;
+  }
+  preview.innerHTML = marked.parse(text, { renderer: markdownLinkRenderer() });
+}
+
+function renderDayDescriptionList() {
+  const list = document.getElementById('admin-daydesc-list');
+  const countEl = document.getElementById('admin-daydesc-count');
+  countEl.textContent = `${dayDescriptionDates.length} day${
+    dayDescriptionDates.length !== 1 ? 's' : ''
+  } with photos`;
+
+  list.innerHTML = '';
+  dayDescriptionDates.forEach((day) => {
+    const exists = Object.prototype.hasOwnProperty.call(dayDescriptionTexts, day.key);
+    const li = document.createElement('li');
+    li.className = 'admin-daydesc-item';
+    if (day.key === selectedDayKey) li.classList.add('active');
+    li.innerHTML = `
+      <span class="admin-daydesc-item-label">${escapeHtml(day.label)}</span>
+      <span class="admin-daydesc-item-count">${day.photoCount} photo${day.photoCount !== 1 ? 's' : ''}</span>
+      ${exists ? '<span class="admin-daydesc-exists-badge" title="Description file exists"></span>' : ''}
+    `;
+    li.addEventListener('click', () => selectDayDescription(day));
+    list.appendChild(li);
+  });
+}
+
+/** Selects a day in the list and populates the editor with its
+ *  existing text (or empty, if the file doesn't exist yet -- Save
+ *  will then create it). */
+function selectDayDescription(day) {
+  selectedDayKey = day.key;
+  const exists = Object.prototype.hasOwnProperty.call(dayDescriptionTexts, day.key);
+  const text = exists ? dayDescriptionTexts[day.key] : '';
+  lastSavedDayText = text;
+
+  document.getElementById('admin-daydesc-heading').textContent = day.label;
+  document.getElementById('admin-daydesc-file-status').textContent = exists
+    ? `Editing existing metadata/${compactDateKey(day.key)}-description.md`
+    : `No file yet — saving will create metadata/${compactDateKey(day.key)}-description.md`;
+  document.getElementById('admin-daydesc-text').value = text;
+  renderDayDescPreview();
+  dayDescStatus('');
+
+  document.getElementById('admin-daydesc-empty').hidden = true;
+  document.getElementById('admin-daydesc-content').hidden = false;
+
+  renderDayDescriptionList();
+}
+
+async function handleSaveDayDescription() {
+  if (!selectedDayKey) return;
+  const text = document.getElementById('admin-daydesc-text').value;
+  const wasNew = !Object.prototype.hasOwnProperty.call(dayDescriptionTexts, selectedDayKey);
+  dayDescStatus('Saving…', '');
+  const saveBtn = document.getElementById('admin-daydesc-save-btn');
+  saveBtn.disabled = true;
+  try {
+    const ok = await saveDayDescription(selectedDayKey, text);
+    if (ok) {
+      dayDescriptionTexts[selectedDayKey] = text;
+      lastSavedDayText = text;
+      document.getElementById('admin-daydesc-file-status').textContent =
+        `Editing existing metadata/${compactDateKey(selectedDayKey)}-description.md`;
+      dayDescStatus(wasNew ? 'Created ✓' : 'Saved ✓', 'success');
+      renderDayDescriptionList();
+    } else {
+      dayDescStatus(
+        `Save failed — could not write metadata/${compactDateKey(selectedDayKey)}-description.md.`,
+        'error'
+      );
+    }
+  } catch (err) {
+    dayDescStatus('Save failed: ' + err.message, 'error');
   } finally {
     saveBtn.disabled = false;
   }
@@ -931,6 +1141,14 @@ async function loadAdminData() {
     document.getElementById('admin-description-text').value = galleryDescriptionText;
     renderDescriptionPreview();
 
+    const dayMap = await fetchDayDescriptions(result.items, token);
+    dayDescriptionTexts = Object.fromEntries(dayMap);
+    dayDescriptionDates = computeDayDescriptionDates();
+    selectedDayKey = null;
+    document.getElementById('admin-daydesc-empty').hidden = false;
+    document.getElementById('admin-daydesc-content').hidden = true;
+    renderDayDescriptionList();
+
     document.getElementById('admin-tabs').hidden = false;
     switchTab(activeTab);
     renderPhotoList();
@@ -957,12 +1175,21 @@ document.getElementById('admin-description-text').addEventListener('input', () =
   descriptionStatus('');
 });
 document.getElementById('admin-description-save-btn').addEventListener('click', handleSaveDescription);
+document.getElementById('admin-daydesc-text').addEventListener('input', () => {
+  renderDayDescPreview();
+  dayDescStatus('');
+});
+document.getElementById('admin-daydesc-save-btn').addEventListener('click', handleSaveDayDescription);
 document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
 window.addEventListener('beforeunload', (e) => {
-  const current = document.getElementById('admin-description-text')?.value;
-  if (current != null && current !== lastSavedDescriptionText) {
+  const descChanged =
+    document.getElementById('admin-description-text')?.value !== lastSavedDescriptionText;
+  const dayChanged =
+    selectedDayKey != null &&
+    document.getElementById('admin-daydesc-text')?.value !== lastSavedDayText;
+  if (descChanged || dayChanged) {
     e.preventDefault();
     e.returnValue = '';
   }

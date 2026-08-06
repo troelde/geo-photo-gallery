@@ -34,6 +34,7 @@
   <nav id="admin-tabs" hidden>
     <button type="button" class="admin-tab-btn active" data-tab="photos">📷 Photos</button>
     <button type="button" class="admin-tab-btn" data-tab="description">📝 Gallery Description</button>
+    <button type="button" class="admin-tab-btn" data-tab="daydesc">🗓️ Day Descriptions</button>
   </nav>
 
   <section id="admin-description-section" class="admin-tab-panel" hidden>
@@ -42,11 +43,12 @@
       Shown at the top of the public gallery, above the photos. Supports
       Markdown formatting (headings, links, lists, bold/italic, etc.).
     </p>
-    <div id="admin-description-editor">
+    <div class="admin-md-editor">
       <div class="admin-description-col">
         <label for="admin-description-text" class="admin-description-label">Markdown source</label>
         <textarea
           id="admin-description-text"
+          class="admin-md-textarea"
           rows="10"
           placeholder="## Welcome to my gallery&#10;&#10;A short intro shown above the photos…"
         ></textarea>
@@ -57,8 +59,51 @@
       </div>
     </div>
     <div id="admin-description-status" class="admin-status" hidden></div>
-    <div id="admin-description-actions">
+    <div class="admin-md-actions">
       <button id="admin-description-save-btn" type="button" class="btn">💾 Save description</button>
+    </div>
+  </section>
+
+  <section id="admin-daydesc-section" class="admin-tab-panel" hidden>
+    <div id="admin-daydesc-main">
+      <!-- Left pane: list of days present among the photos -->
+      <section id="admin-daydesc-list-pane">
+        <div id="admin-daydesc-count" class="subtle"></div>
+        <ul id="admin-daydesc-list"></ul>
+      </section>
+
+      <!-- Right pane: editor for the selected day -->
+      <section id="admin-daydesc-detail-pane">
+        <div id="admin-daydesc-empty" class="subtle">
+          Select a date on the left to view or create its description.
+        </div>
+
+        <div id="admin-daydesc-content" hidden>
+          <h2 id="admin-daydesc-heading"></h2>
+          <p id="admin-daydesc-file-status" class="subtle"></p>
+
+          <div class="admin-md-editor">
+            <div class="admin-description-col">
+              <label for="admin-daydesc-text" class="admin-description-label">Markdown source</label>
+              <textarea
+                id="admin-daydesc-text"
+                class="admin-md-textarea"
+                rows="10"
+                placeholder="Notes about this day's photos…"
+              ></textarea>
+            </div>
+            <div class="admin-description-col">
+              <span class="admin-description-label">Preview</span>
+              <div id="admin-daydesc-preview" class="markdown-body admin-description-preview"></div>
+            </div>
+          </div>
+
+          <div id="admin-daydesc-status" class="admin-status" hidden></div>
+          <div class="admin-md-actions">
+            <button id="admin-daydesc-save-btn" type="button" class="btn">💾 Save description</button>
+          </div>
+        </div>
+      </section>
     </div>
   </section>
 

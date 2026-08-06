@@ -736,11 +736,12 @@ function imageFormatFromDataUrl(dataUrl) {
  *  document (does not trigger the download itself -- see
  *  handleGeneratePdf). Structure: title page (heading + gallery
  *  description) -> per date-group section heading + day description
- *  -> one page per photo (image, filename, caption, taken date, GPS
- *  position + "View on map" link) -> page numbers added in a final
- *  pass. Calls onProgress(current, total) before rendering each
- *  photo's page so the caller can show progress. A photo whose
- *  thumbnail fails to fetch/decode still gets its caption page, with
+ *  -> photos laid out 4-per-page in a 2x2 grid (image, filename,
+ *  caption, taken date, GPS position + "View on map" link, each
+ *  truncated to fit its compact cell) -> page numbers added in a
+ *  final pass. Calls onProgress(current, total) before rendering each
+ *  photo's cell so the caller can show progress. A photo whose
+ *  thumbnail fails to fetch/decode still gets its caption cell, with
  *  an "(image unavailable)" note instead of aborting the whole
  *  export. */
 async function generateGalleryPdf(onProgress) {
@@ -784,6 +785,35 @@ async function generateGalleryPdf(onProgress) {
     addWrappedText(markdownToPlainText(galleryDescriptionText), 11);
   }
 
+  // Photos are laid out 4-per-page in a 2x2 grid (one row of 2, then
+  // another row of 2), each cell holding a scaled-to-fit image plus a
+  // compact single-line-per-field caption/date/GPS block below it.
+  const gridCols = 2;
+  const gridRows = 2;
+  const cellGapX = 18;
+  const cellGapY = 24;
+  const cellWidth = (contentWidth - cellGapX * (gridCols - 1)) / gridCols;
+  const gridTop = margin;
+  const gridBottom = pageHeight - margin;
+  const cellHeight = (gridBottom - gridTop - cellGapY * (gridRows - 1)) / gridRows;
+  const textBlockHeight = 58; // reserved for filename/caption/date/GPS lines
+  const imageMaxHeight = cellHeight - textBlockHeight - 6;
+
+  /** Truncates text to a single line that fits maxWidth at the given
+   *  font size, appending an ellipsis if it had to be cut short --
+   *  used for the compact per-cell caption fields since each cell has
+   *  very little vertical space in a 4-per-page grid. */
+  function truncateLine(text, fontSize, maxWidth) {
+    doc.setFontSize(fontSize);
+    const lines = doc.splitTextToSize(text, maxWidth);
+    if (lines.length <= 1) return lines[0] || '';
+    let line = lines[0];
+    while (line.length > 1 && doc.getTextWidth(line + '…') > maxWidth) {
+      line = line.slice(0, -1);
+    }
+    return line.replace(/\s+$/, '') + '…';
+  }
+
   const groups = groupPhotosByDate(photos);
   const totalPhotos = photos.length;
   let photoIndex = 0;
@@ -800,12 +830,17 @@ async function generateGalleryPdf(onProgress) {
       addWrappedText(markdownToPlainText(dayText), 11);
     }
 
+    let cellIndex = 0;
     for (const photo of group.items) {
       photoIndex++;
       if (onProgress) onProgress(photoIndex, totalPhotos);
 
-      doc.addPage();
-      y = margin;
+      if (cellIndex === 0) doc.addPage();
+      const row = Math.floor(cellIndex / gridCols);
+      const col = cellIndex % gridCols;
+      const cellX = margin + col * (cellWidth + cellGapX);
+      const cellY = gridTop + row * (cellHeight + cellGapY);
+      cellIndex = (cellIndex + 1) % (gridCols * gridRows);
 
       const thumbUrl =
         photo.thumbnails?.[0]?.large?.url || photo.thumbnails?.[0]?.medium?.url || '';
@@ -814,64 +849,66 @@ async function generateGalleryPdf(onProgress) {
         try {
           const dataUrl = await fetchImageAsDataUrl(thumbUrl);
           const dims = await getImageDimensions(dataUrl);
-          const maxImgHeight = pageHeight - margin * 2 - 130;
           const { width, height } = fitDimensions(
             dims.width,
             dims.height,
-            contentWidth,
-            maxImgHeight
+            cellWidth,
+            imageMaxHeight
           );
           doc.addImage(
             dataUrl,
             imageFormatFromDataUrl(dataUrl),
-            margin + (contentWidth - width) / 2,
-            y,
+            cellX + (cellWidth - width) / 2,
+            cellY + (imageMaxHeight - height) / 2,
             width,
             height
           );
-          y += height + 16;
           imageDrawn = true;
         } catch {
-          // Fall through -- render the caption page without the image
-          // rather than aborting the whole export.
+          // Fall through -- render the caption block without the
+          // image rather than aborting the whole export.
         }
       }
       if (!imageDrawn) {
-        doc.setFontSize(11);
+        doc.setFontSize(9);
         doc.setTextColor(150);
-        doc.text('(image unavailable)', margin, y);
+        doc.text('(image unavailable)', cellX, cellY + imageMaxHeight / 2);
         doc.setTextColor(0);
-        y += 22;
       }
 
-      doc.setFontSize(12);
-      doc.text(photo.name, margin, y);
-      y += 18;
+      let textY = cellY + imageMaxHeight + 12;
+      doc.setFontSize(9);
+      doc.setTextColor(0);
+      doc.text(truncateLine(photo.name, 9, cellWidth), cellX, textY);
+      textY += 12;
 
       const desc = effectiveDescription(photo);
-      if (desc) addWrappedText(desc, 10);
+      if (desc) {
+        doc.setFontSize(8);
+        doc.setTextColor(60);
+        doc.text(truncateLine(desc, 8, cellWidth), cellX, textY);
+        doc.setTextColor(0);
+        textY += 11;
+      }
 
       const taken = effectiveTakenDate(photo);
       if (taken && !isNaN(taken)) {
-        doc.setFontSize(10);
-        doc.text('Taken: ' + taken.toLocaleString(), margin, y);
-        y += 16;
+        doc.setFontSize(8);
+        doc.text(truncateLine('Taken: ' + taken.toLocaleString(), 8, cellWidth), cellX, textY);
+        textY += 11;
       }
 
       const pos = effectivePosition(photo);
       if (pos) {
-        doc.setFontSize(10);
-        doc.text(
-          `Position: ${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
-          margin,
-          y
-        );
-        y += 14;
+        doc.setFontSize(8);
+        const posText = `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)} — `;
+        doc.text(posText, cellX, textY);
         const mapUrl = `https://www.google.com/maps?q=${pos.latitude},${pos.longitude}`;
         doc.setTextColor(40, 90, 200);
-        doc.textWithLink('View on map', margin, y, { url: mapUrl });
+        doc.textWithLink('View on map', cellX + doc.getTextWidth(posText), textY, {
+          url: mapUrl,
+        });
         doc.setTextColor(0);
-        y += 16;
       }
     }
   }

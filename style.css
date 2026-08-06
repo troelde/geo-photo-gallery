@@ -325,10 +325,11 @@ body.map-mode #map {
   background: rgba(0,0,0,0.92);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   z-index: 1000;
   padding: 2rem;
+  overflow: auto;
 }
 /* ID specificity beats the default [hidden] rule, so restore it explicitly */
 #lightbox[hidden] {
@@ -336,7 +337,7 @@ body.map-mode #map {
 }
 
 #lightbox-close {
-  position: absolute;
+  position: fixed;
   top: 1.25rem;
   right: 1.25rem;
   background: rgba(255,255,255,0.1);
@@ -351,11 +352,12 @@ body.map-mode #map {
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
+  z-index: 1001;
 }
 #lightbox-close:hover { background: rgba(255,255,255,0.25); }
 
 .lightbox-nav {
-  position: absolute;
+  position: fixed;
   top: 50%;
   transform: translateY(-50%);
   background: rgba(255,255,255,0.1);
@@ -371,6 +373,7 @@ body.map-mode #map {
   align-items: center;
   justify-content: center;
   transition: background 0.15s;
+  z-index: 1001;
 }
 .lightbox-nav:hover { background: rgba(255,255,255,0.25); }
 .lightbox-nav:disabled {
@@ -394,6 +397,8 @@ body.map-mode #map {
   border-radius: var(--radius);
   box-shadow: 0 8px 40px rgba(0,0,0,0.6);
   display: block;
+  transform: scale(3);
+  transform-origin: center center;
 }
 
 #lightbox-media {
@@ -401,6 +406,7 @@ body.map-mode #map {
   max-width: 90vw;
   max-height: 80vh;
   display: flex;
+  margin: 2rem 0;
 }
 
 .lightbox-description {

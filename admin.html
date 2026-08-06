@@ -31,6 +31,32 @@
   </div>
   <div id="admin-error" class="error-banner" hidden></div>
 
+  <section id="admin-description-section" hidden>
+    <h2>Gallery Description (<code>metadata/description.md</code>)</h2>
+    <p class="subtle">
+      Shown at the top of the public gallery, above the photos. Supports
+      Markdown formatting (headings, links, lists, bold/italic, etc.).
+    </p>
+    <div id="admin-description-editor">
+      <div class="admin-description-col">
+        <label for="admin-description-text" class="admin-description-label">Markdown source</label>
+        <textarea
+          id="admin-description-text"
+          rows="10"
+          placeholder="## Welcome to my gallery&#10;&#10;A short intro shown above the photos…"
+        ></textarea>
+      </div>
+      <div class="admin-description-col">
+        <span class="admin-description-label">Preview</span>
+        <div id="admin-description-preview" class="markdown-body admin-description-preview"></div>
+      </div>
+    </div>
+    <div id="admin-description-status" class="admin-status" hidden></div>
+    <div id="admin-description-actions">
+      <button id="admin-description-save-btn" type="button" class="btn">💾 Save description</button>
+    </div>
+  </section>
+
   <div id="admin-main" hidden>
     <!-- Left pane: photo list -->
     <section id="admin-photo-pane">
@@ -105,6 +131,7 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
   <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
   <script src="https://unpkg.com/@azure/msal-browser@5.17.3/lib/msal-browser.min.js"></script>
   <script src="config.js"></script>

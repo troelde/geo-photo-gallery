@@ -47,6 +47,12 @@ let selectedPhoto = null;
 // sidecar files have been fully retired.
 let centralizedData = {};
 
+// The overall gallery description shown at the top of the public
+// gallery (metadata/description.md), and the text last successfully
+// saved -- used to detect unsaved changes.
+let galleryDescriptionText = '';
+let lastSavedDescriptionText = '';
+
 // ---- Share URL / Graph fetch ---------------------------------
 
 /** Encode a OneDrive share URL into the Graph API shareId format. */
@@ -145,6 +151,53 @@ async function saveCentralizedMetadata() {
         'Content-Type': 'text/yaml',
       },
       body: jsyaml.dump(centralizedData),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Fetches the overall gallery description (see the matching function
+ *  in app.js -- same file/shape: plain Markdown text). Missing
+ *  file/folder or a fetch failure just yields '' (best-effort). */
+async function fetchGalleryDescription(rootItems, token) {
+  if (!token) return '';
+  const anyItem = rootItems.find((i) => i.parentReference?.driveId);
+  const driveId = anyItem?.parentReference?.driveId;
+  const rootId = anyItem?.parentReference?.id;
+  if (!driveId || !rootId) return '';
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${driveId}/items/${rootId}:/metadata/description.md:/content`;
+    const resp = await fetch(url, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!resp.ok) return '';
+    return await resp.text();
+  } catch {
+    return '';
+  }
+}
+
+/** Writes the given Markdown text back to metadata/description.md.
+ *  Path-addressing this write auto-creates the metadata/ folder if it
+ *  doesn't exist yet. Returns true on success. */
+async function saveGalleryDescription(text) {
+  const root = getRootRef();
+  if (!root || !lastAccessToken) return false;
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${root.driveId}/items/${root.rootId}:/metadata/description.md:/content`;
+    const resp = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + lastAccessToken,
+        'Content-Type': 'text/markdown',
+      },
+      body: text,
     });
     return resp.ok;
   } catch {
@@ -295,6 +348,64 @@ function formStatus(message, kind) {
   el.textContent = message;
   el.className = 'admin-status' + (kind ? ` ${kind}` : '');
   el.hidden = !message;
+}
+
+function descriptionStatus(message, kind) {
+  const el = document.getElementById('admin-description-status');
+  el.textContent = message;
+  el.className = 'admin-status' + (kind ? ` ${kind}` : '');
+  el.hidden = !message;
+}
+
+// ---- Gallery description editor ---------------------------------
+
+/** A marked.js renderer that makes every link open in a new tab,
+ *  matching the public gallery's own rendering (see app.js). */
+function markdownLinkRenderer() {
+  const renderer = new marked.Renderer();
+  const defaultLink = renderer.link.bind(renderer);
+  renderer.link = (href, title, text) =>
+    defaultLink(href, title, text).replace(
+      '<a ',
+      '<a target="_blank" rel="noopener noreferrer" '
+    );
+  return renderer;
+}
+
+/** Re-renders the live Markdown preview from the current textarea
+ *  contents. Empty text just clears the preview (CSS shows a hint). */
+function renderDescriptionPreview() {
+  const preview = document.getElementById('admin-description-preview');
+  const text = document.getElementById('admin-description-text').value;
+  if (!text.trim() || typeof marked === 'undefined') {
+    preview.innerHTML = '';
+    return;
+  }
+  preview.innerHTML = marked.parse(text, { renderer: markdownLinkRenderer() });
+}
+
+async function handleSaveDescription() {
+  const text = document.getElementById('admin-description-text').value;
+  descriptionStatus('Saving…', '');
+  const saveBtn = document.getElementById('admin-description-save-btn');
+  saveBtn.disabled = true;
+  try {
+    const ok = await saveGalleryDescription(text);
+    if (ok) {
+      galleryDescriptionText = text;
+      lastSavedDescriptionText = text;
+      descriptionStatus('Saved ✓', 'success');
+    } else {
+      descriptionStatus(
+        'Save failed — could not write metadata/description.md.',
+        'error'
+      );
+    }
+  } catch (err) {
+    descriptionStatus('Save failed: ' + err.message, 'error');
+  } finally {
+    saveBtn.disabled = false;
+  }
 }
 
 // ---- Photo list -------------------------------------------------
@@ -799,6 +910,12 @@ async function loadAdminData() {
 
     centralizedData = await fetchCentralizedMetadata(result.items, token);
 
+    galleryDescriptionText = await fetchGalleryDescription(result.items, token);
+    lastSavedDescriptionText = galleryDescriptionText;
+    document.getElementById('admin-description-text').value = galleryDescriptionText;
+    renderDescriptionPreview();
+    document.getElementById('admin-description-section').hidden = false;
+
     document.getElementById('admin-main').hidden = false;
     renderPhotoList();
   } catch (err) {
@@ -819,6 +936,18 @@ document.getElementById('admin-filter').addEventListener('input', (e) => {
 });
 document.getElementById('admin-field-lat').addEventListener('input', updateMapMarkerFromFields);
 document.getElementById('admin-field-long').addEventListener('input', updateMapMarkerFromFields);
+document.getElementById('admin-description-text').addEventListener('input', () => {
+  renderDescriptionPreview();
+  descriptionStatus('');
+});
+document.getElementById('admin-description-save-btn').addEventListener('click', handleSaveDescription);
+window.addEventListener('beforeunload', (e) => {
+  const current = document.getElementById('admin-description-text')?.value;
+  if (current != null && current !== lastSavedDescriptionText) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
 
 // ---- Boot -------------------------------------------------------------
 

@@ -391,20 +391,18 @@ body.map-mode #map {
 }
 
 #lightbox-img {
-  max-width: 90vw;
-  max-height: 80vh;
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: var(--radius);
   box-shadow: 0 8px 40px rgba(0,0,0,0.6);
   display: block;
-  transform: scale(3);
-  transform-origin: center center;
 }
 
 #lightbox-media {
   position: relative;
-  max-width: 90vw;
-  max-height: 80vh;
   display: flex;
   margin: 2rem 0;
 }

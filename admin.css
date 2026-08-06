@@ -370,6 +370,23 @@
   flex-shrink: 0;
 }
 
+/* ---- Export PDF tab ---- */
+#admin-pdf-section {
+  margin: 0 1.5rem 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+  max-width: 640px;
+}
+#admin-pdf-section[hidden] {
+  display: none;
+}
+#admin-pdf-section h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
 /* ---- Per-day description tab (list + detail, mirroring #admin-main) --- */
 #admin-daydesc-section {
   padding: 0 1.5rem 2rem;

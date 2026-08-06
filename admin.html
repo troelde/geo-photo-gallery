@@ -35,6 +35,7 @@
     <button type="button" class="admin-tab-btn active" data-tab="photos">📷 Photos</button>
     <button type="button" class="admin-tab-btn" data-tab="description">📝 Gallery Description</button>
     <button type="button" class="admin-tab-btn" data-tab="daydesc">🗓️ Day Descriptions</button>
+    <button type="button" class="admin-tab-btn" data-tab="pdf">📄 Export PDF</button>
   </nav>
 
   <section id="admin-description-section" class="admin-tab-panel" hidden>
@@ -104,6 +105,22 @@
           </div>
         </div>
       </section>
+    </div>
+  </section>
+
+  <section id="admin-pdf-section" class="admin-tab-panel" hidden>
+    <h2>Export gallery as PDF</h2>
+    <p class="subtle">
+      Generates a single PDF containing the gallery description, each
+      day's description, and every photo (one per page) with its
+      caption, taken date, and GPS position — built entirely in your
+      browser and downloaded directly, nothing is uploaded or processed
+      on a server. This can take a little while for large galleries
+      since every photo's image is fetched and embedded.
+    </p>
+    <div id="admin-pdf-status" class="admin-status" hidden></div>
+    <div class="admin-md-actions">
+      <button id="admin-pdf-generate-btn" type="button" class="btn">📄 Generate &amp; download PDF</button>
     </div>
   </section>
 
@@ -183,6 +200,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
   <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/@azure/msal-browser@5.17.3/lib/msal-browser.min.js"></script>
   <script src="config.js"></script>
   <script src="admin.js"></script>

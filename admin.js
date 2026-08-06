@@ -96,7 +96,7 @@ async function fetchFolderChildren(token) {
 
   const firstPage =
     `${GRAPH_API}/shares/${shareId}/driveItem/children` +
-    `?$select=${select}&$expand=thumbnails($select=medium)&$top=200`;
+    `?$select=${select}&$expand=thumbnails($select=medium,large)&$top=200`;
 
   const headers = { Authorization: `Bearer ${token}` };
   const items = [];
@@ -434,6 +434,7 @@ function switchTab(tab) {
   document.getElementById('admin-main').hidden = tab !== 'photos';
   document.getElementById('admin-description-section').hidden = tab !== 'description';
   document.getElementById('admin-daydesc-section').hidden = tab !== 'daydesc';
+  document.getElementById('admin-pdf-section').hidden = tab !== 'pdf';
   document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.tab === tab);
   });
@@ -631,6 +632,283 @@ async function handleSaveDayDescription() {
     dayDescStatus('Save failed: ' + err.message, 'error');
   } finally {
     saveBtn.disabled = false;
+  }
+}
+
+// ---- PDF export ------------------------------------------------
+
+/** The effective description shown for a photo: the centralized
+ *  metadata/photos.yaml override if present (any string, even an
+ *  empty one, counts as an explicit override), else the photo's real
+ *  OneDrive/EXIF description, else null. Mirrors the override
+ *  precedence in applyYamlFallbackFields in app.js. */
+function effectiveDescription(photo) {
+  const centralKey = centralizedKeyFor(photo);
+  const entry = centralKey != null ? centralizedData[centralKey] : null;
+  if (entry && typeof entry.description === 'string') return entry.description;
+  return typeof photo.description === 'string' && photo.description ? photo.description : null;
+}
+
+/** The effective GPS position for a photo: the centralized
+ *  metadata/photos.yaml position override if present, else the
+ *  photo's real EXIF/OneDrive location, else null. Mirrors the
+ *  override precedence in applyYamlFallbackFields in app.js. */
+function effectivePosition(photo) {
+  const centralKey = centralizedKeyFor(photo);
+  const entry = centralKey != null ? centralizedData[centralKey] : null;
+  const pos = entry?.position ?? {};
+  const lat = pos.lat ?? pos.latitude;
+  const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
+  if (typeof lat === 'number' && typeof lon === 'number') {
+    return { latitude: lat, longitude: lon };
+  }
+
+  const loc = photo.location;
+  if (loc?.latitude != null && loc?.longitude != null) {
+    return { latitude: loc.latitude, longitude: loc.longitude };
+  }
+  return null;
+}
+
+/** Very small Markdown -> plain-text converter for embedding gallery
+ *  and day descriptions in the PDF (jsPDF only draws plain text, so we
+ *  don't attempt full HTML rendering here). Strips fenced code
+ *  blocks, heading markers, bold/italic/code markers, and turns
+ *  [text](url) links and list bullets into plain readable text. */
+function markdownToPlainText(md) {
+  if (!md) return '';
+  return md
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`]{1,3}/g, '')
+    .replace(/^\s*[-*+]\s+/gm, '• ')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .trim();
+}
+
+/** Fetches an image URL (OneDrive's pre-signed thumbnail CDN URLs
+ *  work directly, no Authorization header needed) and converts it to
+ *  a data URL for embedding via jsPDF's addImage. */
+async function fetchImageAsDataUrl(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const blob = await resp.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Could not read image data'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Loads a data URL into an <img> just to read its natural pixel
+ *  dimensions, needed to scale it into the PDF page while preserving
+ *  aspect ratio. */
+function getImageDimensions(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error('Could not decode image'));
+    img.src = dataUrl;
+  });
+}
+
+/** Scales (w, h) down or up to fit within (maxW, maxH), preserving
+ *  aspect ratio. */
+function fitDimensions(w, h, maxW, maxH) {
+  const ratio = Math.min(maxW / w, maxH / h);
+  return { width: w * ratio, height: h * ratio };
+}
+
+/** jsPDF's addImage needs a format string ('JPEG'/'PNG'/etc.) matching
+ *  the actual image bytes -- derive it from the data URL's mime type
+ *  rather than assuming JPEG, in case OneDrive ever serves PNG
+ *  thumbnails. */
+function imageFormatFromDataUrl(dataUrl) {
+  const match = dataUrl.match(/^data:image\/(\w+);/i);
+  if (!match) return 'JPEG';
+  const type = match[1].toUpperCase();
+  return type === 'JPG' ? 'JPEG' : type;
+}
+
+/** Builds the full gallery PDF in memory and returns the jsPDF
+ *  document (does not trigger the download itself -- see
+ *  handleGeneratePdf). Structure: title page (heading + gallery
+ *  description) -> per date-group section heading + day description
+ *  -> one page per photo (image, filename, caption, taken date, GPS
+ *  position + "View on map" link) -> page numbers added in a final
+ *  pass. Calls onProgress(current, total) before rendering each
+ *  photo's page so the caller can show progress. A photo whose
+ *  thumbnail fails to fetch/decode still gets its caption page, with
+ *  an "(image unavailable)" note instead of aborting the whole
+ *  export. */
+async function generateGalleryPdf(onProgress) {
+  if (typeof window.jspdf === 'undefined') {
+    throw new Error('PDF library failed to load (jsPDF).');
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 40;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  function addWrappedText(text, fontSize) {
+    if (!text) return;
+    doc.setFontSize(fontSize);
+    doc.setTextColor(0);
+    const lines = doc.splitTextToSize(text, contentWidth);
+    lines.forEach((line) => {
+      if (y > pageHeight - margin) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += fontSize * 1.3;
+    });
+    y += 8;
+  }
+
+  // Title page
+  doc.setFontSize(22);
+  doc.text('Photo Gallery', margin, y + 10);
+  y += 34;
+  doc.setFontSize(10);
+  doc.setTextColor(120);
+  doc.text('Generated ' + new Date().toLocaleDateString(), margin, y);
+  doc.setTextColor(0);
+  y += 26;
+  if (galleryDescriptionText.trim()) {
+    addWrappedText(markdownToPlainText(galleryDescriptionText), 11);
+  }
+
+  const groups = groupPhotosByDate(photos);
+  const totalPhotos = photos.length;
+  let photoIndex = 0;
+
+  for (const group of groups) {
+    doc.addPage();
+    y = margin;
+    doc.setFontSize(16);
+    doc.text(group.label, margin, y);
+    y += 24;
+
+    const dayText = group.key !== 'unknown' ? dayDescriptionTexts[group.key] : null;
+    if (dayText && dayText.trim()) {
+      addWrappedText(markdownToPlainText(dayText), 11);
+    }
+
+    for (const photo of group.items) {
+      photoIndex++;
+      if (onProgress) onProgress(photoIndex, totalPhotos);
+
+      doc.addPage();
+      y = margin;
+
+      const thumbUrl =
+        photo.thumbnails?.[0]?.large?.url || photo.thumbnails?.[0]?.medium?.url || '';
+      let imageDrawn = false;
+      if (thumbUrl) {
+        try {
+          const dataUrl = await fetchImageAsDataUrl(thumbUrl);
+          const dims = await getImageDimensions(dataUrl);
+          const maxImgHeight = pageHeight - margin * 2 - 130;
+          const { width, height } = fitDimensions(
+            dims.width,
+            dims.height,
+            contentWidth,
+            maxImgHeight
+          );
+          doc.addImage(
+            dataUrl,
+            imageFormatFromDataUrl(dataUrl),
+            margin + (contentWidth - width) / 2,
+            y,
+            width,
+            height
+          );
+          y += height + 16;
+          imageDrawn = true;
+        } catch {
+          // Fall through -- render the caption page without the image
+          // rather than aborting the whole export.
+        }
+      }
+      if (!imageDrawn) {
+        doc.setFontSize(11);
+        doc.setTextColor(150);
+        doc.text('(image unavailable)', margin, y);
+        doc.setTextColor(0);
+        y += 22;
+      }
+
+      doc.setFontSize(12);
+      doc.text(photo.name, margin, y);
+      y += 18;
+
+      const desc = effectiveDescription(photo);
+      if (desc) addWrappedText(desc, 10);
+
+      const taken = effectiveTakenDate(photo);
+      if (taken && !isNaN(taken)) {
+        doc.setFontSize(10);
+        doc.text('Taken: ' + taken.toLocaleString(), margin, y);
+        y += 16;
+      }
+
+      const pos = effectivePosition(photo);
+      if (pos) {
+        doc.setFontSize(10);
+        doc.text(
+          `Position: ${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`,
+          margin,
+          y
+        );
+        y += 14;
+        const mapUrl = `https://www.google.com/maps?q=${pos.latitude},${pos.longitude}`;
+        doc.setTextColor(40, 90, 200);
+        doc.textWithLink('View on map', margin, y, { url: mapUrl });
+        doc.setTextColor(0);
+        y += 16;
+      }
+    }
+  }
+
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(9);
+    doc.setTextColor(150);
+    doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin - 70, pageHeight - 20);
+    doc.setTextColor(0);
+  }
+
+  return doc;
+}
+
+function pdfStatus(message, kind) {
+  const el = document.getElementById('admin-pdf-status');
+  el.textContent = message;
+  el.className = 'admin-status' + (kind ? ` ${kind}` : '');
+  el.hidden = !message;
+}
+
+async function handleGeneratePdf() {
+  const btn = document.getElementById('admin-pdf-generate-btn');
+  btn.disabled = true;
+  pdfStatus('Preparing…', '');
+  try {
+    const doc = await generateGalleryPdf((current, total) => {
+      pdfStatus(`Rendering photo ${current} of ${total}…`, '');
+    });
+    doc.save('gallery.pdf');
+    pdfStatus('PDF downloaded ✓', 'success');
+  } catch (err) {
+    pdfStatus('Failed to generate PDF: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1180,6 +1458,7 @@ document.getElementById('admin-daydesc-text').addEventListener('input', () => {
   dayDescStatus('');
 });
 document.getElementById('admin-daydesc-save-btn').addEventListener('click', handleSaveDayDescription);
+document.getElementById('admin-pdf-generate-btn').addEventListener('click', handleGeneratePdf);
 document.querySelectorAll('.admin-tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });

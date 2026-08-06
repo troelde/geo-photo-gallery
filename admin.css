@@ -1,0 +1,236 @@
+/* ============================================================
+   Geo Photo Gallery — Admin App Styles
+   Loaded alongside style.css (which supplies shared color/spacing
+   variables and base classes like .btn, .subtle, .error-banner,
+   .spinner). This file only adds admin-page-specific layout.
+   ============================================================ */
+
+#admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+#admin-header h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+#admin-auth-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+#admin-auth-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+#admin-intro {
+  padding: 0 1.5rem;
+  max-width: 60rem;
+}
+#admin-intro code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+#admin-main {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) 1fr;
+  gap: 1.5rem;
+  padding: 0 1.5rem 2rem;
+  align-items: start;
+}
+#admin-main[hidden] {
+  display: none;
+}
+
+/* ---- Left pane: photo list ---- */
+#admin-photo-pane {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: calc(100vh - 12rem);
+}
+#admin-filter {
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+#admin-photo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.admin-photo-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+.admin-photo-item:last-child { border-bottom: none; }
+.admin-photo-item:hover { background: rgba(255, 255, 255, 0.05); }
+.admin-photo-item.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-left: 3px solid var(--accent);
+}
+.admin-photo-item img {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #222;
+}
+.admin-photo-item .admin-photo-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-photo-item .admin-sidecar-badge {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ---- Right pane: detail / edit panel ---- */
+#admin-detail-pane {
+  min-height: 20rem;
+}
+#admin-detail-content {
+  max-width: 40rem;
+}
+#admin-detail-thumb {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--radius);
+  display: block;
+  margin-bottom: 0.75rem;
+  object-fit: contain;
+  background: #000;
+}
+#admin-detail-filename {
+  font-size: 1.1rem;
+  margin: 0 0 1rem;
+  word-break: break-all;
+}
+
+.admin-info-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.admin-info-box h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+.admin-info-box code { color: var(--text); font-weight: 500; }
+
+#admin-exif-fields {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+}
+#admin-exif-fields dt { color: var(--muted); }
+#admin-exif-fields dd { margin: 0; }
+
+#admin-sidecar-form fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+#admin-sidecar-form legend {
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0;
+  margin-bottom: 0.4rem;
+}
+#admin-sidecar-form fieldset > label {
+  display: inline-block;
+  margin-right: 1rem;
+}
+#admin-sidecar-form label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+#admin-sidecar-form input,
+#admin-sidecar-form textarea {
+  display: block;
+  margin-top: 0.3rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  width: 100%;
+  max-width: 18rem;
+  box-sizing: border-box;
+}
+#admin-sidecar-form textarea {
+  max-width: 100%;
+  resize: vertical;
+}
+
+#admin-form-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+.btn.danger {
+  background: #7f1d1d;
+}
+.btn.danger:hover { opacity: 0.85; }
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-status {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+.admin-status.success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+.admin-status.error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+@media (max-width: 720px) {
+  #admin-main {
+    grid-template-columns: 1fr;
+  }
+  #admin-photo-pane {
+    position: static;
+    max-height: 16rem;
+  }
+}

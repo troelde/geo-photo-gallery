@@ -112,6 +112,22 @@ date: 2025-06-15T14:30
 
 `date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need. The sidecar is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
 
+You can hand-edit these YAML files directly in OneDrive, or use the **Admin App** below for a form-based UI.
+
+---
+
+## Admin App
+
+`admin.html` is a standalone page (not linked from the public gallery) for creating, editing, and deleting `<photo filename>.yaml` sidecar files without touching OneDrive directly.
+
+- Open it by navigating to it directly, e.g. `https://troelde.github.io/geo-photo-gallery/admin.html` (or `admin.html` locally). It supports the same `?shareUrl=` override as the gallery.
+- Sign in with the **OneDrive account that owns** the shared folder — writing files only works if that account actually has edit rights on the drive.
+- Pick a photo from the filterable list on the left (a small dot badge marks photos that already have a sidecar). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the sidecar's Latitude/Longitude, Description, and Date/Time.
+- **Save** writes the form's fields as the sidecar's entire content (it does not preserve other custom YAML keys from a hand-edited file). Leave a field blank to omit it from the sidecar.
+- **Remove overrides** deletes the sidecar file entirely.
+
+> ⚠️ The admin app requests the `Files.ReadWrite` Graph scope (read-only `Files.Read` is not enough to write files), so the **first sign-in triggers a fresh Microsoft consent prompt**, even if you've already signed into the main gallery. You'll also need to add `admin.html`'s URL (e.g. `http://localhost:8080/admin.html` and your deployed `.../admin.html`) as an additional **Redirect URI** in your Azure App Registration, the same way you did for `index.html`.
+
 ---
 
 ## Deploying
@@ -140,8 +156,11 @@ This is handy for sharing links to a specific album without redeploying. If the 
 
 ```
 geo-photo-gallery/
-├── index.html    — App shell + HTML structure
+├── index.html    — Gallery app shell + HTML structure
 ├── app.js        — MSAL auth, OneDrive Graph API, gallery + map logic
+├── admin.html    — Standalone admin app shell (edit YAML sidecar metadata)
+├── admin.js      — Admin app: MSAL auth (write scope), list/edit/save/delete
+├── admin.css     — Admin app layout styles (loaded alongside style.css)
 ├── style.css     — Dark-theme responsive styles
 ├── config.js     — Your share URL and Azure client ID (edit this)
 └── README.md     — This file

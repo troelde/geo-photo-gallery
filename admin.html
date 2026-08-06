@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Geo Photo Gallery — Admin</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body id="admin-app">
+  <header id="admin-header">
+    <h1>🛠 Gallery Admin</h1>
+    <div id="admin-auth-bar">
+      <span id="admin-auth-status"></span>
+      <button id="admin-signin-btn" class="btn" hidden>Sign in to Microsoft</button>
+      <button id="admin-signout-btn" class="btn secondary" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <p id="admin-intro" class="subtle">
+    Edit per-photo GPS position, description, and taken date overrides
+    stored in <code>&lt;photo filename&gt;.yaml</code> sidecar files next
+    to each photo. Sign in with the OneDrive account that owns the shared
+    folder to make changes.
+  </p>
+
+  <div id="admin-loading" hidden>
+    <div class="spinner"></div>
+    <p>Loading photos…</p>
+  </div>
+  <div id="admin-error" class="error-banner" hidden></div>
+
+  <div id="admin-main" hidden>
+    <!-- Left pane: photo list -->
+    <section id="admin-photo-pane">
+      <input
+        id="admin-filter"
+        type="search"
+        placeholder="Filter by filename…"
+        autocomplete="off"
+      />
+      <div id="admin-photo-count" class="subtle"></div>
+      <ul id="admin-photo-list"></ul>
+    </section>
+
+    <!-- Right pane: detail / edit panel -->
+    <section id="admin-detail-pane">
+      <div id="admin-detail-empty" class="subtle">
+        Select a photo on the left to view or edit its metadata.
+      </div>
+
+      <div id="admin-detail-content" hidden>
+        <img id="admin-detail-thumb" src="" alt="" />
+        <h2 id="admin-detail-filename"></h2>
+
+        <div id="admin-detail-exif" class="admin-info-box">
+          <h3>Current OneDrive / EXIF metadata</h3>
+          <dl id="admin-exif-fields"></dl>
+        </div>
+
+        <form id="admin-sidecar-form" class="admin-info-box">
+          <h3>Sidecar overrides (<code id="admin-sidecar-filename"></code>)</h3>
+
+          <fieldset>
+            <legend>Position</legend>
+            <label>
+              Latitude
+              <input id="admin-field-lat" type="number" step="any" placeholder="e.g. 78.22334" />
+            </label>
+            <label>
+              Longitude
+              <input id="admin-field-long" type="number" step="any" placeholder="e.g. 15.6482" />
+            </label>
+          </fieldset>
+
+          <label>
+            Description
+            <textarea id="admin-field-description" rows="3" placeholder="Optional description override"></textarea>
+          </label>
+
+          <fieldset>
+            <legend>Taken date</legend>
+            <label>
+              Date
+              <input id="admin-field-date" type="date" />
+            </label>
+            <label>
+              Time <span class="subtle">(optional)</span>
+              <input id="admin-field-time" type="time" />
+            </label>
+          </fieldset>
+
+          <div id="admin-form-status" class="admin-status" hidden></div>
+
+          <div id="admin-form-actions">
+            <button id="admin-save-btn" type="submit" class="btn">💾 Save</button>
+            <button id="admin-delete-btn" type="button" class="btn danger" hidden>🗑 Remove overrides</button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </div>
+
+  <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="https://unpkg.com/@azure/msal-browser@5.17.3/lib/msal-browser.min.js"></script>
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

@@ -362,12 +362,84 @@ function renderExifInfo(photo) {
     .join('');
 }
 
+let positionMap = null;
+let positionMarker = null;
+
+/** Lazily creates the Leaflet position-picker map the first time the
+ *  detail panel becomes visible (Leaflet needs a visible container to
+ *  size itself correctly). Clicking the map sets/moves the marker and
+ *  fills in the Latitude/Longitude fields; dragging the marker does
+ *  the same; right-click (or long-press on touch) removes the marker
+ *  and clears both fields. */
+function initPositionMap() {
+  if (positionMap || typeof L === 'undefined') return;
+
+  positionMap = L.map('admin-position-map', { attributionControl: false }).setView([20, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    subdomains: 'abc',
+  }).addTo(positionMap);
+
+  positionMap.on('click', (e) => setPositionFromLatLng(e.latlng));
+  positionMap.on('contextmenu', () => {
+    document.getElementById('admin-field-lat').value = '';
+    document.getElementById('admin-field-long').value = '';
+    updateMapMarkerFromFields();
+  });
+}
+
+/** Writes a Leaflet LatLng into the Latitude/Longitude fields (rounded
+ *  to 6 decimal places, ~0.1m precision) and refreshes the marker. */
+function setPositionFromLatLng(latlng) {
+  document.getElementById('admin-field-lat').value = latlng.lat.toFixed(6);
+  document.getElementById('admin-field-long').value = latlng.lng.toFixed(6);
+  updateMapMarkerFromFields();
+}
+
+/** Syncs the map marker to whatever is currently in the Latitude/
+ *  Longitude fields -- shows/moves a draggable marker when both are
+ *  valid numbers, removes it otherwise. Also called after manual
+ *  typing in either field so the map stays in sync either way. */
+function updateMapMarkerFromFields() {
+  if (!positionMap) return;
+
+  const lat = parseFloat(document.getElementById('admin-field-lat').value);
+  const lon = parseFloat(document.getElementById('admin-field-long').value);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    if (positionMarker) {
+      positionMap.removeLayer(positionMarker);
+      positionMarker = null;
+    }
+    return;
+  }
+
+  if (positionMarker) {
+    positionMarker.setLatLng([lat, lon]);
+  } else {
+    positionMarker = L.marker([lat, lon], { draggable: true }).addTo(positionMap);
+    positionMarker.on('drag', (e) => {
+      const p = e.target.getLatLng();
+      document.getElementById('admin-field-lat').value = p.lat.toFixed(6);
+      document.getElementById('admin-field-long').value = p.lng.toFixed(6);
+    });
+    positionMarker.on('contextmenu', (e) => {
+      L.DomEvent.stopPropagation(e);
+      document.getElementById('admin-field-lat').value = '';
+      document.getElementById('admin-field-long').value = '';
+      updateMapMarkerFromFields();
+    });
+  }
+  positionMap.setView([lat, lon], Math.max(positionMap.getZoom(), 12));
+}
+
 function clearForm() {
   document.getElementById('admin-field-lat').value = '';
   document.getElementById('admin-field-long').value = '';
   document.getElementById('admin-field-description').value = '';
   document.getElementById('admin-field-date').value = '';
   document.getElementById('admin-field-time').value = '';
+  updateMapMarkerFromFields();
 }
 
 /** Populates the form from a parsed metadata YAML object (position with
@@ -403,6 +475,7 @@ function populateForm(data) {
   }
   document.getElementById('admin-field-date').value = datePart;
   document.getElementById('admin-field-time').value = timePart;
+  updateMapMarkerFromFields();
 }
 
 function selectPhoto(photo) {
@@ -423,6 +496,24 @@ function selectPhoto(photo) {
 
   renderExifInfo(photo);
   populateForm(centralKey != null ? centralizedData[centralKey] : null);
+
+  // The map container was hidden (inside #admin-detail-content) until
+  // now, so Leaflet needs an explicit init/resize once it's visible.
+  initPositionMap();
+  if (positionMap) {
+    positionMap.invalidateSize();
+    if (!positionMarker) {
+      // No override position set yet -- center on the photo's real
+      // EXIF location for reference, if it has one, else a default
+      // world view.
+      const loc = photo.location;
+      if (loc?.latitude != null && loc?.longitude != null) {
+        positionMap.setView([loc.latitude, loc.longitude], 12);
+      } else {
+        positionMap.setView([20, 0], 2);
+      }
+    }
+  }
 
   // Swap in the full-resolution original once fetched, so the preview
   // isn't limited to OneDrive's small "medium" thumbnail size.
@@ -600,6 +691,8 @@ document.getElementById('admin-delete-btn').addEventListener('click', handleDele
 document.getElementById('admin-filter').addEventListener('input', (e) => {
   renderPhotoList(e.target.value);
 });
+document.getElementById('admin-field-lat').addEventListener('input', updateMapMarkerFromFields);
+document.getElementById('admin-field-long').addEventListener('input', updateMapMarkerFromFields);
 
 // ---- Boot -------------------------------------------------------------
 

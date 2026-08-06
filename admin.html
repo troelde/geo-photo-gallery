@@ -6,6 +6,7 @@
   <title>Geo Photo Gallery — Admin</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body id="admin-app">
   <header id="admin-header">
@@ -71,6 +72,8 @@
               Longitude
               <input id="admin-field-long" type="number" step="any" placeholder="e.g. 15.6482" />
             </label>
+            <p class="subtle">Click the map to set the position, or drag the pin. Right-click (or long-press) the pin to clear it.</p>
+            <div id="admin-position-map"></div>
           </fieldset>
 
           <label>
@@ -101,6 +104,7 @@
     </section>
   </div>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
   <script src="https://unpkg.com/@azure/msal-browser@5.17.3/lib/msal-browser.min.js"></script>
   <script src="config.js"></script>

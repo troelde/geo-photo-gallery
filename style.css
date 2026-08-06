@@ -399,12 +399,18 @@ body.map-mode #map {
   border-radius: var(--radius);
   box-shadow: 0 8px 40px rgba(0,0,0,0.6);
   display: block;
+  transform: scale(3);
+  transform-origin: center center;
+  flex-shrink: 0;
 }
 
 #lightbox-media {
   position: relative;
   display: flex;
   margin: 2rem 0;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
 }
 
 .lightbox-description {

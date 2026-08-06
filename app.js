@@ -156,30 +156,122 @@ async function fetchDescriptions(rootItems, token) {
   }
 }
 
+/** Applies GPS/description/date fallback fields from a parsed YAML
+ *  data object (either a centralized metadata entry or an individual
+ *  sidecar file's content -- both use the same shape) onto a photo,
+ *  in place. Never overrides real EXIF/OneDrive data -- only fills
+ *  gaps. Shared by both fallback sources so their parsing logic (and
+ *  the js-yaml Date-vs-string quirks) stays in exactly one place. */
+function applyYamlFallbackFields(photo, data) {
+  if (!data) return;
+
+  const pos = data.position ?? {};
+  const lat = pos.lat ?? pos.latitude;
+  const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
+  if (
+    !(photo.location?.latitude != null && photo.location?.longitude != null) &&
+    typeof lat === 'number' &&
+    typeof lon === 'number'
+  ) {
+    photo.location = { latitude: lat, longitude: lon };
+  }
+
+  if (!photo.description && typeof data.description === 'string') {
+    photo.description = data.description;
+  }
+
+  if (!photo.photo?.takenDateTime && data.date != null) {
+    let isoDateTime = null;
+    if (data.date instanceof Date && !isNaN(data.date)) {
+      // js-yaml parses unquoted timestamps that include seconds
+      // (e.g. YYYY-MM-DDTHH:MM:SS) as Date objects rather than
+      // strings.
+      isoDateTime = data.date.toISOString();
+    } else if (typeof data.date === 'string') {
+      // Accepts "YYYY-MM-DD" (date only) or "YYYY-MM-DDTHH:MM"
+      // (date + time, no seconds) -- both stay strings under
+      // js-yaml since neither matches its full timestamp regex.
+      const match = data.date
+        .trim()
+        .match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?$/);
+      if (match) {
+        const [, datePart, timePart] = match;
+        isoDateTime = `${datePart}T${timePart ?? '00:00'}:00Z`;
+      }
+    }
+    if (isoDateTime) {
+      photo.photo = { ...photo.photo, takenDateTime: isoDateTime };
+    }
+  }
+}
+
+/** Fetches the centralized metadata/photos.yaml file, if present: a
+ *  single YAML mapping of photo filename -> {position, description,
+ *  date}, consolidating what used to be per-photo <name>.yaml sidecar
+ *  files into one file. This is the new preferred source; individual
+ *  sidecars are kept working as a fallback during the transition (see
+ *  applyYamlFallbacks below) for photos not yet migrated. Path-
+ *  addressed directly off the shared folder's own root item, so no
+ *  folder search is needed -- any child's parentReference already
+ *  points at that root driveId/id. Missing file/folder, a fetch
+ *  failure, or malformed YAML all just yield {} (best-effort). */
+async function fetchCentralizedMetadata(rootItems, token) {
+  if (!token || typeof jsyaml === 'undefined') return {};
+
+  const anyItem = rootItems.find((i) => i.parentReference?.driveId);
+  const driveId = anyItem?.parentReference?.driveId;
+  const rootId = anyItem?.parentReference?.id;
+  if (!driveId || !rootId) return {};
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${driveId}/items/${rootId}:/metadata/photos.yaml:/content`;
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) return {};
+    const data = jsyaml.load(await resp.text());
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
 /** For photos missing GPS EXIF metadata, a OneDrive description, and/or a
- *  taken date, look for a sidecar YAML file named exactly
- *  `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next to the photo
- *  in the shared folder. If found:
+ *  taken date, looks up fallback data in two places, in priority order:
+ *   1. The centralized metadata/photos.yaml file (see
+ *      fetchCentralizedMetadata) -- the preferred, consolidated source.
+ *   2. A legacy per-photo sidecar YAML file named exactly
+ *      `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next to the
+ *      photo in the shared folder -- kept working during the
+ *      sidecar-to-centralized transition for photos not yet migrated.
+ *  Either source can provide:
  *   - a `position` dict with `lat`/`long` (or `latitude`/`longitude`,
- *     decimal degrees) is used as a GPS fallback so the photo still
- *     shows up on the map;
- *   - a `description` string is used as the photo's subtitle when
+ *     decimal degrees) used as a GPS fallback so the photo still shows
+ *     up on the map;
+ *   - a `description` string used as the photo's subtitle when
  *     OneDrive itself has no description set for that file;
- *   - a `date` string (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) is used as the
- *     photo's taken date/time (for date-grouping/sorting) when it has no
- *     EXIF taken date.
- *  None of these ever override real OneDrive/EXIF data -- only fills gaps.
- *  Mutates matching photo objects in place; a no-op when nothing matches
- *  or the YAML library isn't loaded. */
-async function applyYamlFallbacks(photos, rootItems, token) {
+ *   - a `date` string (`YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`) used as the
+ *     photo's taken date/time (for date-grouping/sorting) when it has
+ *     no EXIF taken date.
+ *  None of these ever override real OneDrive/EXIF data -- only fills
+ *  gaps. Mutates matching photo objects in place; a no-op when nothing
+ *  matches or the YAML library isn't loaded. */
+async function applyYamlFallbacks(photos, rootItems, token, centralizedData) {
   if (!token || typeof jsyaml === 'undefined') return;
+
+  const centralizedByName = new Map(
+    Object.keys(centralizedData || {}).map((name) => [
+      name.toLowerCase(),
+      centralizedData[name],
+    ])
+  );
 
   const yamlByName = new Map(
     rootItems
       .filter((i) => i.file && /\.ya?ml$/i.test(i.name ?? ''))
       .map((i) => [i.name.toLowerCase(), i])
   );
-  if (!yamlByName.size) return;
 
   const needsFallback = photos.filter(
     (p) =>
@@ -190,6 +282,15 @@ async function applyYamlFallbacks(photos, rootItems, token) {
 
   await Promise.all(
     needsFallback.map(async (photo) => {
+      // Centralized metadata takes priority (it's the source of truth
+      // going forward); only fall back to the legacy per-photo sidecar
+      // file when this photo has no centralized entry yet.
+      const centralEntry = centralizedByName.get(photo.name.toLowerCase());
+      if (centralEntry) {
+        applyYamlFallbackFields(photo, centralEntry);
+        return;
+      }
+
       const yamlItem =
         yamlByName.get(`${photo.name}.yaml`.toLowerCase()) ||
         yamlByName.get(`${photo.name}.yml`.toLowerCase());
@@ -203,45 +304,7 @@ async function applyYamlFallbacks(photos, rootItems, token) {
         });
         if (!resp.ok) return;
         const data = jsyaml.load(await resp.text());
-
-        const pos = data?.position ?? {};
-        const lat = pos.lat ?? pos.latitude;
-        const lon = pos.long ?? pos.lon ?? pos.lng ?? pos.longitude;
-        if (
-          !(photo.location?.latitude != null && photo.location?.longitude != null) &&
-          typeof lat === 'number' &&
-          typeof lon === 'number'
-        ) {
-          photo.location = { latitude: lat, longitude: lon };
-        }
-
-        if (!photo.description && typeof data?.description === 'string') {
-          photo.description = data.description;
-        }
-
-        if (!photo.photo?.takenDateTime && data?.date != null) {
-          let isoDateTime = null;
-          if (data.date instanceof Date && !isNaN(data.date)) {
-            // js-yaml parses unquoted timestamps that include seconds
-            // (e.g. YYYY-MM-DDTHH:MM:SS) as Date objects rather than
-            // strings.
-            isoDateTime = data.date.toISOString();
-          } else if (typeof data.date === 'string') {
-            // Accepts "YYYY-MM-DD" (date only) or "YYYY-MM-DDTHH:MM"
-            // (date + time, no seconds) — both stay strings under
-            // js-yaml since neither matches its full timestamp regex.
-            const match = data.date
-              .trim()
-              .match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?$/);
-            if (match) {
-              const [, datePart, timePart] = match;
-              isoDateTime = `${datePart}T${timePart ?? '00:00'}:00Z`;
-            }
-          }
-          if (isoDateTime) {
-            photo.photo = { ...photo.photo, takenDateTime: isoDateTime };
-          }
-        }
+        applyYamlFallbackFields(photo, data);
       } catch {
         // Malformed YAML or fetch failure -- fallback is best-effort.
       }
@@ -771,10 +834,11 @@ async function loadPhotos() {
     // metadata/YYYYMMDD-description.md (per-day) files, and for per-photo
     // <filename>.yaml sidecars providing GPS/description/date fallbacks,
     // before rendering.
-    const [descriptions] = await Promise.all([
+    const [descriptions, centralizedData] = await Promise.all([
       fetchDescriptions(result.items, token),
-      applyYamlFallbacks(photos, result.items, token),
+      fetchCentralizedMetadata(result.items, token),
     ]);
+    await applyYamlFallbacks(photos, result.items, token, centralizedData);
 
     renderGallery(photos, descriptions.byDate);
     plotPhotosOnMap(photos);

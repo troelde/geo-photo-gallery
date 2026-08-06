@@ -43,6 +43,13 @@ let yamlByName = new Map(); // lowercased "<photo>.yaml" -> drive item
 let selectedPhoto = null;
 let selectedYamlItem = null; // the currently-loaded sidecar item, if any
 
+// Centralized metadata/photos.yaml consolidation (transition phase):
+// a single YAML mapping of photo filename -> {position, description,
+// date}, kept in sync with the legacy per-photo sidecar files. Saves
+// and deletes write/remove from both places; reads prefer this map
+// when a photo has an entry here.
+let centralizedData = {};
+
 // ---- Share URL / Graph fetch ---------------------------------
 
 /** Encode a OneDrive share URL into the Graph API shareId format. */
@@ -86,6 +93,75 @@ async function fetchFolderChildren(token) {
   }
 
   return { ok: true, items };
+}
+
+/** Any item's parentReference points at the shared folder's own
+ *  driveId/id -- needed to path-address the metadata/ subfolder for
+ *  the centralized file without a separate folder-lookup call. */
+function getRootRef() {
+  const anyItem = photos.find((i) => i.parentReference?.driveId) || photos[0];
+  const driveId = anyItem?.parentReference?.driveId;
+  const rootId = anyItem?.parentReference?.id;
+  return driveId && rootId ? { driveId, rootId } : null;
+}
+
+/** Fetches the centralized metadata/photos.yaml file, if present (see
+ *  the matching function in app.js -- same file/shape). Missing
+ *  file/folder, a fetch failure, or malformed YAML all just yield {}
+ *  (best-effort; individual sidecars still work as a fallback). */
+async function fetchCentralizedMetadata(rootItems, token) {
+  if (!token) return {};
+  const anyItem = rootItems.find((i) => i.parentReference?.driveId);
+  const driveId = anyItem?.parentReference?.driveId;
+  const rootId = anyItem?.parentReference?.id;
+  if (!driveId || !rootId) return {};
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${driveId}/items/${rootId}:/metadata/photos.yaml:/content`;
+    const resp = await fetch(url, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    if (!resp.ok) return {};
+    const data = jsyaml.load(await resp.text());
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Writes the entire in-memory centralizedData map back to
+ *  metadata/photos.yaml. Path-addressing this write auto-creates the
+ *  metadata/ folder if it doesn't exist yet, same as sidecar writes
+ *  auto-create nothing (they already sit in the root). Returns true on
+ *  success. */
+async function saveCentralizedMetadata() {
+  const root = getRootRef();
+  if (!root || !lastAccessToken) return false;
+
+  try {
+    const url =
+      `${GRAPH_API}/drives/${root.driveId}/items/${root.rootId}:/metadata/photos.yaml:/content`;
+    const resp = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        Authorization: 'Bearer ' + lastAccessToken,
+        'Content-Type': 'text/yaml',
+      },
+      body: jsyaml.dump(centralizedData),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Finds this photo's key in centralizedData (case-insensitive match
+ *  against the map's own keys), or null if it has no centralized
+ *  entry. */
+function centralizedKeyFor(photo) {
+  const needle = photo.name.toLowerCase();
+  return Object.keys(centralizedData).find((k) => k.toLowerCase() === needle) ?? null;
 }
 
 /** Fetches and parses a sidecar YAML file's content, if it exists.
@@ -254,7 +330,8 @@ function yamlNameFor(photo) {
 function hasSidecar(photo) {
   return (
     yamlByName.has(yamlNameFor(photo)) ||
-    yamlByName.has(`${photo.name}.yml`.toLowerCase())
+    yamlByName.has(`${photo.name}.yml`.toLowerCase()) ||
+    centralizedKeyFor(photo) != null
   );
 }
 
@@ -382,12 +459,18 @@ async function selectPhoto(photo) {
   thumbEl.src = photo.thumbnails?.[0]?.medium?.url ?? '';
   document.getElementById('admin-detail-filename').textContent = photo.name;
   document.getElementById('admin-sidecar-filename').textContent = `${photo.name}.yaml`;
-  document.getElementById('admin-delete-btn').hidden = !selectedYamlItem;
+
+  const centralKey = centralizedKeyFor(photo);
+  document.getElementById('admin-delete-btn').hidden = !selectedYamlItem && centralKey == null;
 
   renderExifInfo(photo);
   clearForm();
 
-  if (selectedYamlItem && lastAccessToken) {
+  if (centralKey != null) {
+    // Centralized metadata is authoritative once a photo has been
+    // migrated -- use it directly, no extra fetch needed.
+    populateForm(centralizedData[centralKey]);
+  } else if (selectedYamlItem && lastAccessToken) {
     const data = await fetchSidecarData(selectedYamlItem, lastAccessToken);
     // Guard against the user having clicked a different photo while
     // this fetch was in flight.
@@ -454,7 +537,7 @@ async function handleSave(e) {
     const resp = await fetch(url, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${lastAccessToken}`,
+        Authorization: 'Bearer ' + lastAccessToken,
         'Content-Type': 'text/yaml',
       },
       body: yamlText,
@@ -468,9 +551,21 @@ async function handleSave(e) {
     const savedItem = await resp.json();
     yamlByName.set(yamlNameFor(selectedPhoto), savedItem);
     selectedYamlItem = savedItem;
+
+    // Transition phase: also upsert this photo's data into the
+    // centralized metadata/photos.yaml file so both stay in sync.
+    const centralKey = centralizedKeyFor(selectedPhoto) ?? selectedPhoto.name;
+    centralizedData[centralKey] = obj;
+    const centralOk = await saveCentralizedMetadata();
+
     document.getElementById('admin-delete-btn').hidden = false;
     renderPhotoList(document.getElementById('admin-filter').value);
-    formStatus('Saved ✓', 'success');
+    formStatus(
+      centralOk
+        ? 'Saved ✓ (sidecar + central metadata)'
+        : 'Sidecar saved, but central metadata update failed — will retry next save.',
+      centralOk ? 'success' : 'error'
+    );
   } catch (err) {
     formStatus('Save failed: ' + err.message, 'error');
   } finally {
@@ -479,7 +574,9 @@ async function handleSave(e) {
 }
 
 async function handleDelete() {
-  if (!selectedPhoto || !selectedYamlItem || !lastAccessToken) return;
+  if (!selectedPhoto || !lastAccessToken) return;
+  const centralKey = centralizedKeyFor(selectedPhoto);
+  if (!selectedYamlItem && centralKey == null) return;
   if (!confirm(`Remove all sidecar overrides for "${selectedPhoto.name}"?`)) return;
 
   const deleteBtn = document.getElementById('admin-delete-btn');
@@ -487,24 +584,38 @@ async function handleDelete() {
   formStatus('Removing…', null);
 
   try {
-    const driveId = selectedYamlItem.parentReference?.driveId;
-    const url = `${GRAPH_API}/drives/${driveId}/items/${selectedYamlItem.id}`;
-    const resp = await fetch(url, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${lastAccessToken}` },
-    });
+    if (selectedYamlItem) {
+      const driveId = selectedYamlItem.parentReference?.driveId;
+      const url = `${GRAPH_API}/drives/${driveId}/items/${selectedYamlItem.id}`;
+      const resp = await fetch(url, {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + lastAccessToken },
+      });
 
-    if (!resp.ok && resp.status !== 404) {
-      formStatus(`Remove failed (HTTP ${resp.status}).`, 'error');
-      return;
+      if (!resp.ok && resp.status !== 404) {
+        formStatus(`Remove failed (HTTP ${resp.status}).`, 'error');
+        return;
+      }
+
+      yamlByName.delete(yamlNameFor(selectedPhoto));
+      selectedYamlItem = null;
     }
 
-    yamlByName.delete(yamlNameFor(selectedPhoto));
-    selectedYamlItem = null;
+    let centralOk = true;
+    if (centralKey != null) {
+      delete centralizedData[centralKey];
+      centralOk = await saveCentralizedMetadata();
+    }
+
     clearForm();
     deleteBtn.hidden = true;
     renderPhotoList(document.getElementById('admin-filter').value);
-    formStatus('Removed ✓', 'success');
+    formStatus(
+      centralOk
+        ? 'Removed ✓'
+        : 'Sidecar removed, but central metadata update failed — will retry next save.',
+      centralOk ? 'success' : 'error'
+    );
   } catch (err) {
     formStatus('Remove failed: ' + err.message, 'error');
   } finally {
@@ -568,6 +679,8 @@ async function loadAdminData() {
       showError('No image files found in the shared folder.');
       return;
     }
+
+    centralizedData = await fetchCentralizedMetadata(result.items, token);
 
     document.getElementById('admin-main').hidden = false;
     renderPhotoList();

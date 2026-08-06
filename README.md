@@ -114,17 +114,39 @@ date: 2025-06-15T14:30
 
 You can hand-edit these YAML files directly in OneDrive, or use the **Admin App** below for a form-based UI.
 
+### Centralized metadata file (transition in progress)
+
+Per-photo `<name>.yaml` sidecar files are being consolidated into a single **`metadata/photos.yaml`** file — one YAML mapping of `<photo filename>: { position, description, date }` entries for the whole gallery, instead of one file per photo:
+
+```yaml
+IMG_1234.jpg:
+  position:
+    lat: 78.22334
+    long: 15.6482
+  description: Arrival day in Longyearbyen
+  date: 2025-06-15T14:30
+IMG_5678.jpg:
+  description: Just a caption, no GPS/date override needed
+```
+
+Both the gallery (`app.js`) and the **Admin App** currently read/write **both** locations during this transition:
+
+- **Reading**: for each photo, `metadata/photos.yaml` is checked first; if that photo has no entry there yet, the legacy per-photo `<name>.yaml` sidecar is used as a fallback. This means existing sidecars keep working untouched — nothing needs to be migrated by hand.
+- **Writing** (via the Admin App): Save/Remove overrides always update **both** the individual `<name>.yaml` sidecar and that photo's entry in `metadata/photos.yaml`, so the two stay in sync automatically as you edit photos. The centralized file (and its `metadata/` folder, if missing) is created automatically on first save.
+
+Once every photo you care about has been edited at least once (or you've otherwise migrated its data into `metadata/photos.yaml` by hand), the old per-photo `<name>.yaml` sidecars become redundant and can be deleted — the gallery will keep working from the centralized file alone.
+
 ---
 
 ## Admin App
 
-`admin.html` is a standalone page (not linked from the public gallery) for creating, editing, and deleting `<photo filename>.yaml` sidecar files without touching OneDrive directly.
+`admin.html` is a standalone page (not linked from the public gallery) for creating, editing, and deleting per-photo metadata overrides (GPS position, description, taken date) without touching OneDrive directly. It reads/writes both the legacy per-photo sidecars and the centralized `metadata/photos.yaml` file described above.
 
 - Open it by navigating to it directly, e.g. `https://troelde.github.io/geo-photo-gallery/admin.html` (or `admin.html` locally). It supports the same `?shareUrl=` override as the gallery.
 - Sign in with the **OneDrive account that owns** the shared folder — writing files only works if that account actually has edit rights on the drive.
-- Pick a photo from the filterable list on the left (a small dot badge marks photos that already have a sidecar). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the sidecar's Latitude/Longitude, Description, and Date/Time.
-- **Save** writes the form's fields as the sidecar's entire content (it does not preserve other custom YAML keys from a hand-edited file). Leave a field blank to omit it from the sidecar.
-- **Remove overrides** deletes the sidecar file entirely.
+- Pick a photo from the filterable list on the left (a small dot badge marks photos that already have overrides, from either source). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the Latitude/Longitude, Description, and Date/Time overrides.
+- **Save** writes the form's fields to both the per-photo `<name>.yaml` sidecar and the photo's entry in `metadata/photos.yaml` (it does not preserve other custom YAML keys from a hand-edited sidecar). Leave a field blank to omit it.
+- **Remove overrides** deletes the per-photo sidecar (if any) and the photo's centralized entry (if any).
 
 > ⚠️ The admin app requests the `Files.ReadWrite` Graph scope (read-only `Files.Read` is not enough to write files), so the **first sign-in triggers a fresh Microsoft consent prompt**, even if you've already signed into the main gallery. You'll also need to add `admin.html`'s URL (e.g. `http://localhost:8080/admin.html` and your deployed `.../admin.html`) as an additional **Redirect URI** in your Azure App Registration, the same way you did for `index.html`.
 

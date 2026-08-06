@@ -19,9 +19,9 @@
 
   <p id="admin-intro" class="subtle">
     Edit per-photo GPS position, description, and taken date overrides
-    stored in <code>&lt;photo filename&gt;.yaml</code> sidecar files next
-    to each photo. Sign in with the OneDrive account that owns the shared
-    folder to make changes.
+    stored in the centralized <code>metadata/photos.yaml</code> file.
+    Sign in with the OneDrive account that owns the shared folder to
+    make changes.
   </p>
 
   <div id="admin-loading" hidden>
@@ -33,12 +33,6 @@
   <div id="admin-main" hidden>
     <!-- Left pane: photo list -->
     <section id="admin-photo-pane">
-      <div id="admin-consolidate-box" class="admin-info-box">
-        <button id="admin-consolidate-btn" class="btn secondary">
-          Consolidate sidecars → metadata/photos.yaml
-        </button>
-        <p id="admin-consolidate-status" class="subtle"></p>
-      </div>
       <input
         id="admin-filter"
         type="search"
@@ -65,7 +59,7 @@
         </div>
 
         <form id="admin-sidecar-form" class="admin-info-box">
-          <h3>Sidecar overrides (<code id="admin-sidecar-filename"></code>)</h3>
+          <h3>Metadata overrides (<code>metadata/photos.yaml</code>)</h3>
 
           <fieldset>
             <legend>Position</legend>

@@ -78,7 +78,7 @@ Sign-in uses [MSAL.js](https://github.com/AzureAD/microsoft-authentication-libra
 | Gallery & per-day descriptions | Optional Markdown files in a `metadata` subfolder are rendered above the gallery and/or under each date heading (see below) |
 | Map view | GPS-tagged photos plotted as thumbnail pins, with a layer switcher for Topographic (OpenTopoMap), Streets (OSM), and Satellite (Esri) |
 | No-GPS handling | A legend shows how many photos lack GPS data; those are still browsable in the Gallery |
-| YAML sidecar fallback | A `<photo filename>.yaml` file next to a photo can supply GPS coordinates, a description, and/or a taken date when OneDrive doesn't already have them (see below) |
+| YAML metadata fallback | An entry in the centralized `metadata/photos.yaml` file can supply GPS coordinates, a description, and/or a taken date for a photo when OneDrive doesn't already have them (see below) |
 | Sticky header/tabs | The title bar and Gallery/Map tabs stay pinned while scrolling |
 | Pagination | Automatically fetches all pages from Graph (>200 photos) |
 | No build tools | Plain HTML/CSS/JS, zero dependencies to install |
@@ -98,25 +98,9 @@ Both support standard Markdown (headings, bold/italic, links, lists, etc.), rend
 
 ---
 
-## GPS, Description & Date Fallback via YAML Sidecar Files
+## GPS, Description & Date Fallback via metadata/photos.yaml
 
-If a photo has no GPS location in its EXIF data, no description set in OneDrive, and/or no taken date in its metadata, you can supply any of these manually by adding a YAML file right next to it in the same shared folder, named `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml` for `IMG_1234.jpg`):
-
-```yaml
-position:
-  lat: 78.22334
-  long: 15.6482
-description: Arrival day in Longyearbyen
-date: 2025-06-15T14:30
-```
-
-`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need. The sidecar is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
-
-You can hand-edit these YAML files directly in OneDrive, or use the **Admin App** below for a form-based UI.
-
-### Centralized metadata file (transition in progress)
-
-Per-photo `<name>.yaml` sidecar files are being consolidated into a single **`metadata/photos.yaml`** file — one YAML mapping of `<photo filename>: { position, description, date }` entries for the whole gallery, instead of one file per photo:
+If a photo has no GPS location in its EXIF data, no description set in OneDrive, and/or no taken date in its metadata, you can supply any of these manually via a single centralized YAML file, `metadata/photos.yaml`, inside the shared OneDrive folder — one YAML mapping of `<photo filename>: { position, description, date }` entries for the whole gallery:
 
 ```yaml
 IMG_1234.jpg:
@@ -129,25 +113,21 @@ IMG_5678.jpg:
   description: Just a caption, no GPS/date override needed
 ```
 
-Both the gallery (`app.js`) and the **Admin App** currently read/write **both** locations during this transition:
+`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need per photo. This data is only used to fill gaps: it never overrides a photo's real EXIF GPS location, an existing OneDrive description, or a real EXIF taken date. This is handy for scanned photos, screenshots, or camera gear that doesn't record GPS/dates.
 
-- **Reading**: for each photo, `metadata/photos.yaml` is checked first; if that photo has no entry there yet, the legacy per-photo `<name>.yaml` sidecar is used as a fallback. This means existing sidecars keep working untouched — nothing needs to be migrated by hand.
-- **Writing** (via the Admin App): Save/Remove overrides always update **both** the individual `<name>.yaml` sidecar and that photo's entry in `metadata/photos.yaml`, so the two stay in sync automatically as you edit photos. The centralized file (and its `metadata/` folder, if missing) is created automatically on first save.
-
-Once every photo you care about has been edited at least once (or bulk-migrated with the Admin App's "Consolidate sidecars" button — see below), the old per-photo `<name>.yaml` sidecars become redundant and can be deleted — the gallery will keep working from the centralized file alone.
+You can hand-edit `metadata/photos.yaml` directly in OneDrive, or use the **Admin App** below for a form-based UI. The file (and its `metadata/` folder, if missing) is created automatically on first save from the Admin App.
 
 ---
 
 ## Admin App
 
-`admin.html` is a standalone page (not linked from the public gallery) for creating, editing, and deleting per-photo metadata overrides (GPS position, description, taken date) without touching OneDrive directly. It reads/writes both the legacy per-photo sidecars and the centralized `metadata/photos.yaml` file described above.
+`admin.html` is a standalone page (not linked from the public gallery) for creating, editing, and deleting per-photo metadata overrides (GPS position, description, taken date) without touching OneDrive directly. It reads/writes the centralized `metadata/photos.yaml` file described above.
 
 - Open it by navigating to it directly, e.g. `https://troelde.github.io/geo-photo-gallery/admin.html` (or `admin.html` locally). It supports the same `?shareUrl=` override as the gallery.
 - Sign in with the **OneDrive account that owns** the shared folder — writing files only works if that account actually has edit rights on the drive.
-- Pick a photo from the filterable list on the left (a small dot badge marks photos that already have overrides, from either source). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the Latitude/Longitude, Description, and Date/Time overrides.
-- **Save** writes the form's fields to both the per-photo `<name>.yaml` sidecar and the photo's entry in `metadata/photos.yaml` (it does not preserve other custom YAML keys from a hand-edited sidecar). Leave a field blank to omit it.
-- **Remove overrides** deletes the per-photo sidecar (if any) and the photo's centralized entry (if any).
-- **Consolidate sidecars → metadata/photos.yaml** (button above the photo list) is a one-time bulk migration: it reads every existing per-photo sidecar that doesn't already have a centralized entry and copies its data in. It's safe to click more than once — photos already present centrally are left untouched, and the original sidecar files are never deleted (only copied).
+- Pick a photo from the filterable list on the left (a small dot badge marks photos that already have overrides). The right panel shows the photo's real OneDrive/EXIF metadata (description, GPS, taken date) as read-only reference, plus an editable form for the Latitude/Longitude, Description, and Date/Time overrides.
+- **Save** writes the form's fields to that photo's entry in `metadata/photos.yaml`. Leave a field blank to omit it.
+- **Remove overrides** deletes the photo's entry from `metadata/photos.yaml`.
 
 > ⚠️ The admin app requests the `Files.ReadWrite` Graph scope (read-only `Files.Read` is not enough to write files), so the **first sign-in triggers a fresh Microsoft consent prompt**, even if you've already signed into the main gallery. You'll also need to add `admin.html`'s URL (e.g. `http://localhost:8080/admin.html` and your deployed `.../admin.html`) as an additional **Redirect URI** in your Azure App Registration, the same way you did for `index.html`.
 
@@ -181,7 +161,7 @@ This is handy for sharing links to a specific album without redeploying. If the 
 geo-photo-gallery/
 ├── index.html    — Gallery app shell + HTML structure
 ├── app.js        — MSAL auth, OneDrive Graph API, gallery + map logic
-├── admin.html    — Standalone admin app shell (edit YAML sidecar metadata)
+├── admin.html    — Standalone admin app shell (edit metadata/photos.yaml overrides)
 ├── admin.js      — Admin app: MSAL auth (write scope), list/edit/save/delete
 ├── admin.css     — Admin app layout styles (loaded alongside style.css)
 ├── style.css     — Dark-theme responsive styles

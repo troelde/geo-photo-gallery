@@ -207,14 +207,13 @@ function applyYamlFallbackFields(photo, data) {
 
 /** Fetches the centralized metadata/photos.yaml file, if present: a
  *  single YAML mapping of photo filename -> {position, description,
- *  date}, consolidating what used to be per-photo <name>.yaml sidecar
- *  files into one file. This is the new preferred source; individual
- *  sidecars are kept working as a fallback during the transition (see
- *  applyYamlFallbacks below) for photos not yet migrated. Path-
- *  addressed directly off the shared folder's own root item, so no
- *  folder search is needed -- any child's parentReference already
- *  points at that root driveId/id. Missing file/folder, a fetch
- *  failure, or malformed YAML all just yield {} (best-effort). */
+ *  date}. This is the sole source of GPS/description/date fallback
+ *  data for the gallery (legacy per-photo <name>.yaml sidecars are no
+ *  longer read here -- see applyYamlFallbacks below). Path-addressed
+ *  directly off the shared folder's own root item, so no folder
+ *  search is needed -- any child's parentReference already points at
+ *  that root driveId/id. Missing file/folder, a fetch failure, or
+ *  malformed YAML all just yield {} (best-effort). */
 async function fetchCentralizedMetadata(rootItems, token) {
   if (!token || typeof jsyaml === 'undefined') return {};
 
@@ -238,14 +237,9 @@ async function fetchCentralizedMetadata(rootItems, token) {
 }
 
 /** For photos missing GPS EXIF metadata, a OneDrive description, and/or a
- *  taken date, looks up fallback data in two places, in priority order:
- *   1. The centralized metadata/photos.yaml file (see
- *      fetchCentralizedMetadata) -- the preferred, consolidated source.
- *   2. A legacy per-photo sidecar YAML file named exactly
- *      `<photo filename>.yaml` (e.g. `IMG_1234.jpg.yaml`) next to the
- *      photo in the shared folder -- kept working during the
- *      sidecar-to-centralized transition for photos not yet migrated.
- *  Either source can provide:
+ *  taken date, looks up fallback data in the centralized
+ *  metadata/photos.yaml file (see fetchCentralizedMetadata). Per-photo
+ *  entries can provide:
  *   - a `position` dict with `lat`/`long` (or `latitude`/`longitude`,
  *     decimal degrees) used as a GPS fallback so the photo still shows
  *     up on the map;
@@ -255,61 +249,20 @@ async function fetchCentralizedMetadata(rootItems, token) {
  *     photo's taken date/time (for date-grouping/sorting) when it has
  *     no EXIF taken date.
  *  None of these ever override real OneDrive/EXIF data -- only fills
- *  gaps. Mutates matching photo objects in place; a no-op when nothing
- *  matches or the YAML library isn't loaded. */
-async function applyYamlFallbacks(photos, rootItems, token, centralizedData) {
-  if (!token || typeof jsyaml === 'undefined') return;
-
+ *  gaps. Mutates matching photo objects in place. */
+function applyYamlFallbacks(photos, centralizedData) {
   const centralizedByName = new Map(
     Object.keys(centralizedData || {}).map((name) => [
       name.toLowerCase(),
       centralizedData[name],
     ])
   );
+  if (!centralizedByName.size) return;
 
-  const yamlByName = new Map(
-    rootItems
-      .filter((i) => i.file && /\.ya?ml$/i.test(i.name ?? ''))
-      .map((i) => [i.name.toLowerCase(), i])
-  );
-
-  const needsFallback = photos.filter(
-    (p) =>
-      !(p.location?.latitude != null && p.location?.longitude != null) ||
-      !p.description ||
-      !p.photo?.takenDateTime
-  );
-
-  await Promise.all(
-    needsFallback.map(async (photo) => {
-      // Centralized metadata takes priority (it's the source of truth
-      // going forward); only fall back to the legacy per-photo sidecar
-      // file when this photo has no centralized entry yet.
-      const centralEntry = centralizedByName.get(photo.name.toLowerCase());
-      if (centralEntry) {
-        applyYamlFallbackFields(photo, centralEntry);
-        return;
-      }
-
-      const yamlItem =
-        yamlByName.get(`${photo.name}.yaml`.toLowerCase()) ||
-        yamlByName.get(`${photo.name}.yml`.toLowerCase());
-      const driveId = yamlItem?.parentReference?.driveId;
-      if (!yamlItem || !driveId) return;
-
-      try {
-        const contentUrl = `${GRAPH_API}/drives/${driveId}/items/${yamlItem.id}/content`;
-        const resp = await fetch(contentUrl, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!resp.ok) return;
-        const data = jsyaml.load(await resp.text());
-        applyYamlFallbackFields(photo, data);
-      } catch {
-        // Malformed YAML or fetch failure -- fallback is best-effort.
-      }
-    })
-  );
+  for (const photo of photos) {
+    const centralEntry = centralizedByName.get(photo.name.toLowerCase());
+    if (centralEntry) applyYamlFallbackFields(photo, centralEntry);
+  }
 }
 
 /** Renders fetched markdown (if any) into the gallery description box. */
@@ -831,14 +784,14 @@ async function loadPhotos() {
     }
 
     // Look for optional metadata/description.md (gallery-wide) and
-    // metadata/YYYYMMDD-description.md (per-day) files, and for per-photo
-    // <filename>.yaml sidecars providing GPS/description/date fallbacks,
-    // before rendering.
+    // metadata/YYYYMMDD-description.md (per-day) files, and the
+    // centralized metadata/photos.yaml file providing per-photo
+    // GPS/description/date fallbacks, before rendering.
     const [descriptions, centralizedData] = await Promise.all([
       fetchDescriptions(result.items, token),
       fetchCentralizedMetadata(result.items, token),
     ]);
-    await applyYamlFallbacks(photos, result.items, token, centralizedData);
+    applyYamlFallbacks(photos, centralizedData);
 
     renderGallery(photos, descriptions.byDate);
     plotPhotosOnMap(photos);

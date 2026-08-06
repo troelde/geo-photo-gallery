@@ -364,6 +364,15 @@ function renderExifInfo(photo) {
 
 let positionMap = null;
 let positionMarker = null;
+let exifReferenceMarker = null;
+
+const exifMarkerIcon = () =>
+  L.divIcon({
+    className: 'admin-exif-marker',
+    html: '<span></span>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
 
 /** Lazily creates the Leaflet position-picker map the first time the
  *  detail panel becomes visible (Leaflet needs a visible container to
@@ -396,22 +405,54 @@ function setPositionFromLatLng(latlng) {
   updateMapMarkerFromFields();
 }
 
-/** Syncs the map marker to whatever is currently in the Latitude/
- *  Longitude fields -- shows/moves a draggable marker when both are
- *  valid numbers, removes it otherwise. Also called after manual
- *  typing in either field so the map stays in sync either way. */
+/** Syncs the map marker(s) to whatever is currently in the Latitude/
+ *  Longitude override fields:
+ *   - When both fields hold valid numbers, shows/moves a draggable
+ *     blue override marker there (and hides the EXIF reference
+ *     marker, since the override takes priority).
+ *   - When the fields are empty, removes the override marker and
+ *     instead shows a small, non-draggable grey reference marker at
+ *     the currently selected photo's real EXIF GPS location, if it
+ *     has one -- this mirrors exactly what the gallery falls back to
+ *     when no photos.yaml override is set for that photo.
+ *  Also called after manual typing in either field so the map stays
+ *  in sync either way. */
 function updateMapMarkerFromFields() {
   if (!positionMap) return;
 
   const lat = parseFloat(document.getElementById('admin-field-lat').value);
   const lon = parseFloat(document.getElementById('admin-field-long').value);
+  const hasOverride = Number.isFinite(lat) && Number.isFinite(lon);
 
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+  if (!hasOverride) {
     if (positionMarker) {
       positionMap.removeLayer(positionMarker);
       positionMarker = null;
     }
+
+    const loc = selectedPhoto?.location;
+    if (loc?.latitude != null && loc?.longitude != null) {
+      if (exifReferenceMarker) {
+        exifReferenceMarker.setLatLng([loc.latitude, loc.longitude]);
+      } else {
+        exifReferenceMarker = L.marker([loc.latitude, loc.longitude], {
+          icon: exifMarkerIcon(),
+          interactive: false,
+        })
+          .bindTooltip('EXIF location (no override set)')
+          .addTo(positionMap);
+      }
+      positionMap.setView([loc.latitude, loc.longitude], Math.max(positionMap.getZoom(), 12));
+    } else if (exifReferenceMarker) {
+      positionMap.removeLayer(exifReferenceMarker);
+      exifReferenceMarker = null;
+    }
     return;
+  }
+
+  if (exifReferenceMarker) {
+    positionMap.removeLayer(exifReferenceMarker);
+    exifReferenceMarker = null;
   }
 
   if (positionMarker) {
@@ -495,24 +536,20 @@ function selectPhoto(photo) {
   document.getElementById('admin-delete-btn').hidden = centralKey == null;
 
   renderExifInfo(photo);
-  populateForm(centralKey != null ? centralizedData[centralKey] : null);
 
   // The map container was hidden (inside #admin-detail-content) until
   // now, so Leaflet needs an explicit init/resize once it's visible.
+  // Must happen before populateForm() below so its marker/centering
+  // update (which reads selectedPhoto.location for the EXIF fallback
+  // pin) has a live map to draw onto.
   initPositionMap();
-  if (positionMap) {
-    positionMap.invalidateSize();
-    if (!positionMarker) {
-      // No override position set yet -- center on the photo's real
-      // EXIF location for reference, if it has one, else a default
-      // world view.
-      const loc = photo.location;
-      if (loc?.latitude != null && loc?.longitude != null) {
-        positionMap.setView([loc.latitude, loc.longitude], 12);
-      } else {
-        positionMap.setView([20, 0], 2);
-      }
-    }
+  if (positionMap) positionMap.invalidateSize();
+
+  populateForm(centralKey != null ? centralizedData[centralKey] : null);
+
+  if (positionMap && !positionMarker && !exifReferenceMarker) {
+    // Neither an override nor an EXIF location exists for this photo.
+    positionMap.setView([20, 0], 2);
   }
 
   // Swap in the full-resolution original once fetched, so the preview

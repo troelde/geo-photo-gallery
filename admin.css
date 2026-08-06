@@ -207,6 +207,19 @@
   cursor: crosshair;
 }
 
+/* Small grey dot marking a photo's real EXIF GPS location when no
+   photos.yaml override has been set yet -- distinct from the blue
+   draggable Leaflet pin used for an actual override. */
+.admin-exif-marker span {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+
 #admin-form-actions {
   display: flex;
   gap: 0.75rem;

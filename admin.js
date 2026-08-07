@@ -855,9 +855,9 @@ function imageFormatFromDataUrl(dataUrl) {
  *  description, rendered richly -- headings, bold/italic, clickable
  *  links, and embedded images all preserved) -> per date-group
  *  section heading + day description (same rich rendering) -> photos
- *  laid out 4-per-page in a 2x2 grid (image, filename, caption, taken
- *  date, GPS position + "View on map" link, each truncated to fit its
- *  compact cell) -> page numbers added in a final pass. Calls
+ *  laid out 4-per-page in a 2x2 grid (image, caption, taken date, and
+ *  a "View on map" link, each truncated to fit its compact cell) ->
+ *  page numbers added in a final pass. Calls
  *  onProgress(current, total) before rendering each photo's cell so
  *  the caller can show progress. A photo whose thumbnail fails to
  *  fetch/decode still gets its caption cell, with an "(image
@@ -1090,7 +1090,7 @@ async function generateGalleryPdf(onProgress) {
   const gridTop = margin;
   const gridBottom = pageHeight - margin;
   const cellHeight = (gridBottom - gridTop - cellGapY * (gridRows - 1)) / gridRows;
-  const textBlockHeight = 96; // reserved for filename/caption (up to 2 wrapped lines each) + date/GPS lines
+  const textBlockHeight = 62; // reserved for caption (up to 2 wrapped lines) + date/GPS-link lines
   const imageMaxHeight = cellHeight - textBlockHeight - 6;
 
   /** Truncates text to a single line that fits maxWidth at the given
@@ -1110,10 +1110,10 @@ async function generateGalleryPdf(onProgress) {
 
   /** Word-wraps text to at most maxLines lines that fit maxWidth at
    *  the given font size (rather than clipping/truncating to a single
-   *  line) -- used for the filename and caption fields, which can
-   *  otherwise be long enough to lose meaningful content when cut
-   *  short. If it still doesn't fit in maxLines, the last line is
-   *  truncated with an ellipsis as a last resort. */
+   *  line) -- used for the caption field, which can otherwise be long
+   *  enough to lose meaningful content when cut short. If it still
+   *  doesn't fit in maxLines, the last line is truncated with an
+   *  ellipsis as a last resort. */
   function wrapLines(text, fontSize, maxWidth, maxLines) {
     doc.setFontSize(fontSize);
     const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
@@ -1188,27 +1188,21 @@ async function generateGalleryPdf(onProgress) {
       }
 
       let textY = cellY + imageMaxHeight + 12;
-      doc.setFontSize(9);
-      doc.setTextColor(0);
-      for (const line of wrapLines(photo.name, 9, cellWidth, 2)) {
-        doc.text(line, cellX, textY);
-        textY += 11;
-      }
 
       const desc = effectiveDescription(photo);
       if (desc) {
-        doc.setFontSize(8);
-        doc.setTextColor(60);
-        for (const line of wrapLines(desc, 8, cellWidth, 2)) {
-          doc.text(line, cellX, textY);
-          textY += 10;
-        }
+        doc.setFontSize(9);
         doc.setTextColor(0);
+        for (const line of wrapLines(desc, 9, cellWidth, 2)) {
+          doc.text(line, cellX, textY);
+          textY += 11;
+        }
       }
 
       const taken = effectiveTakenDate(photo);
       if (taken && !isNaN(taken)) {
         doc.setFontSize(8);
+        doc.setTextColor(0);
         doc.text(truncateLine('Taken: ' + taken.toLocaleString(), 8, cellWidth), cellX, textY);
         textY += 11;
       }
@@ -1216,12 +1210,9 @@ async function generateGalleryPdf(onProgress) {
       const pos = effectivePosition(photo);
       if (pos) {
         doc.setFontSize(8);
-        const posText = `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)} — `;
-        doc.text(posText, cellX, textY);
-        const mapUrl = `https://www.google.com/maps?q=${pos.latitude},${pos.longitude}`;
         doc.setTextColor(40, 90, 200);
-        doc.textWithLink('View on map', cellX + doc.getTextWidth(posText), textY, {
-          url: mapUrl,
+        doc.textWithLink('View on map', cellX, textY, {
+          url: `https://www.google.com/maps?q=${pos.latitude},${pos.longitude}`,
         });
         doc.setTextColor(0);
       }

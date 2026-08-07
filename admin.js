@@ -675,17 +675,70 @@ function effectivePosition(photo) {
   return null;
 }
 
-/** Very small Markdown -> plain-text converter for embedding gallery
- *  and day descriptions in the PDF (jsPDF only draws plain text, so we
- *  don't attempt full HTML rendering here). Strips fenced code
- *  blocks, heading markers, bold/italic/code markers, and turns
- *  [text](url) links and list bullets into plain readable text. */
+/** Recursively flattens marked.js inline tokens (text/strong/em/
+ *  codespan/link/image/br) into a flat list of simple "runs" for
+ *  rendering in jsPDF, which has no rich-text/HTML support of its
+ *  own: { type: 'text', text, bold, italic, href } for words (href
+ *  set if inside a Markdown link, so the whole link phrase renders
+ *  clickable), or { type: 'image', src, alt } for an embedded image
+ *  (e.g. a map screenshot), or { type: 'break' } for an explicit line
+ *  break. */
+function flattenInlineTokens(tokens, bold = false, italic = false) {
+  const runs = [];
+  for (const t of tokens || []) {
+    switch (t.type) {
+      case 'text':
+      case 'escape':
+        runs.push({ type: 'text', text: t.text, bold, italic });
+        break;
+      case 'strong':
+        runs.push(...flattenInlineTokens(t.tokens, true, italic));
+        break;
+      case 'em':
+        runs.push(...flattenInlineTokens(t.tokens, bold, true));
+        break;
+      case 'codespan':
+        runs.push({ type: 'text', text: t.text, bold, italic });
+        break;
+      case 'link': {
+        const inner = flattenInlineTokens(
+          t.tokens && t.tokens.length ? t.tokens : [{ type: 'text', text: t.text }],
+          bold,
+          italic
+        );
+        inner.forEach((r) => {
+          if (r.type === 'text') r.href = t.href;
+        });
+        runs.push(...inner);
+        break;
+      }
+      case 'image':
+        runs.push({ type: 'image', src: t.href, alt: t.text });
+        break;
+      case 'br':
+        runs.push({ type: 'break' });
+        break;
+      default:
+        if (t.tokens) runs.push(...flattenInlineTokens(t.tokens, bold, italic));
+        else if (t.text) runs.push({ type: 'text', text: t.text, bold, italic });
+    }
+  }
+  return runs;
+}
+
+/** Very small Markdown -> plain-text converter, used only as a
+ *  fallback if marked.js somehow failed to load (renderMarkdownBlock
+ *  normally handles gallery/day descriptions with full link/image
+ *  support instead). Strips fenced code blocks, heading markers,
+ *  bold/italic/code markers, and turns [text](url) links and list
+ *  bullets into plain readable text (losing the link href and any
+ *  images). */
 function markdownToPlainText(md) {
   if (!md) return '';
   return md
     .replace(/```[\s\S]*?```/g, '')
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/!?\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[*_`]{1,3}/g, '')
     .replace(/^\s*[-*+]\s+/gm, '• ')
     .replace(/^\s*\d+\.\s+/gm, '')
@@ -740,15 +793,18 @@ function imageFormatFromDataUrl(dataUrl) {
 /** Builds the full gallery PDF in memory and returns the jsPDF
  *  document (does not trigger the download itself -- see
  *  handleGeneratePdf). Structure: title page (heading + gallery
- *  description) -> per date-group section heading + day description
- *  -> photos laid out 4-per-page in a 2x2 grid (image, filename,
- *  caption, taken date, GPS position + "View on map" link, each
- *  truncated to fit its compact cell) -> page numbers added in a
- *  final pass. Calls onProgress(current, total) before rendering each
- *  photo's cell so the caller can show progress. A photo whose
- *  thumbnail fails to fetch/decode still gets its caption cell, with
- *  an "(image unavailable)" note instead of aborting the whole
- *  export. */
+ *  description, rendered richly -- headings, bold/italic, clickable
+ *  links, and embedded images all preserved) -> per date-group
+ *  section heading + day description (same rich rendering) -> photos
+ *  laid out 4-per-page in a 2x2 grid (image, filename, caption, taken
+ *  date, GPS position + "View on map" link, each truncated to fit its
+ *  compact cell) -> page numbers added in a final pass. Calls
+ *  onProgress(current, total) before rendering each photo's cell so
+ *  the caller can show progress. A photo whose thumbnail fails to
+ *  fetch/decode still gets its caption cell, with an "(image
+ *  unavailable)" note instead of aborting the whole export -- the
+ *  same graceful fallback applies to any image embedded in a
+ *  description. */
 async function generateGalleryPdf(onProgress) {
   if (typeof window.jspdf === 'undefined') {
     throw new Error('PDF library failed to load (jsPDF).');
@@ -777,6 +833,177 @@ async function generateGalleryPdf(onProgress) {
     y += 8;
   }
 
+  /** Adds a new page and resets y to the top margin if the given
+   *  height wouldn't fit on the current page before the bottom
+   *  margin -- used throughout the rich Markdown renderer below so
+   *  headings/paragraph lines/images never get cut off mid-block. */
+  function ensureSpace(neededHeight) {
+    if (y + neededHeight > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  const defaultFontName = doc.getFont().fontName;
+
+  /** Renders a word-wrapped run of inline Markdown content (as
+   *  produced by flattenInlineTokens) at the given base font size,
+   *  preserving bold/italic styling, rendering Markdown links as
+   *  clickable text (via doc.textWithLink), and embedding any inline
+   *  images (e.g. a map screenshot) via doc.addImage -- flushing to a
+   *  fresh line before/after each embedded image since it can't share
+   *  a text line. An optional bulletPrefix (e.g. "• ") is prepended
+   *  as a plain leading word, for list items. */
+  async function renderInlineRuns(runs, fontSize, bulletPrefix = '') {
+    const lineHeight = fontSize * 1.35;
+    const spaceWidth = (() => {
+      doc.setFont(defaultFontName, 'normal');
+      doc.setFontSize(fontSize);
+      return doc.getTextWidth(' ');
+    })();
+
+    const words = [];
+    if (bulletPrefix) words.push({ type: 'text', text: bulletPrefix, bold: false, italic: false });
+    for (const run of runs) {
+      if (run.type === 'image' || run.type === 'break') {
+        words.push(run);
+        continue;
+      }
+      for (const part of run.text.split(/\s+/)) {
+        if (part) words.push({ type: 'text', text: part, bold: run.bold, italic: run.italic, href: run.href });
+      }
+    }
+
+    let x = margin;
+    ensureSpace(lineHeight);
+
+    for (const word of words) {
+      if (word.type === 'image') {
+        x = margin;
+        y += 4;
+        try {
+          const dataUrl = await fetchImageAsDataUrl(word.src);
+          const dims = await getImageDimensions(dataUrl);
+          const maxImgHeight = 220;
+          const { width, height } = fitDimensions(dims.width, dims.height, contentWidth, maxImgHeight);
+          ensureSpace(height + 10);
+          doc.addImage(
+            dataUrl,
+            imageFormatFromDataUrl(dataUrl),
+            margin + (contentWidth - width) / 2,
+            y,
+            width,
+            height
+          );
+          y += height + 10;
+        } catch {
+          // Fall through -- show a small note instead of the image
+          // rather than dropping/aborting the whole description.
+          ensureSpace(lineHeight);
+          doc.setFont(defaultFontName, 'normal');
+          doc.setFontSize(fontSize - 1);
+          doc.setTextColor(150);
+          doc.text(`[image unavailable: ${word.alt || word.src}]`, margin, y);
+          doc.setTextColor(0);
+          y += lineHeight;
+        }
+        continue;
+      }
+      if (word.type === 'break') {
+        x = margin;
+        y += lineHeight;
+        ensureSpace(lineHeight);
+        continue;
+      }
+
+      const style = word.bold && word.italic ? 'bolditalic' : word.bold ? 'bold' : word.italic ? 'italic' : 'normal';
+      doc.setFont(defaultFontName, style);
+      doc.setFontSize(fontSize);
+      const wordWidth = doc.getTextWidth(word.text);
+
+      if (x !== margin && x + wordWidth > margin + contentWidth) {
+        x = margin;
+        y += lineHeight;
+        ensureSpace(lineHeight);
+      }
+
+      if (word.href) {
+        doc.setTextColor(40, 90, 200);
+        doc.textWithLink(word.text, x, y, { url: word.href });
+        doc.setTextColor(0);
+      } else {
+        doc.text(word.text, x, y);
+      }
+      x += wordWidth + spaceWidth;
+    }
+    doc.setFont(defaultFontName, 'normal');
+    y += lineHeight;
+  }
+
+  /** Renders one marked.js block-level token (heading, paragraph,
+   *  list, image, hr, etc.) at the given base font size. */
+  async function renderMarkdownBlockToken(block, fontSize) {
+    switch (block.type) {
+      case 'heading': {
+        const size = Math.max(fontSize, 18 - (block.depth - 1) * 2);
+        ensureSpace(size * 1.4);
+        doc.setFont(defaultFontName, 'bold');
+        doc.setFontSize(size);
+        doc.setTextColor(0);
+        doc.text(block.text, margin, y);
+        doc.setFont(defaultFontName, 'normal');
+        y += size * 1.4 + 4;
+        break;
+      }
+      case 'paragraph':
+        await renderInlineRuns(flattenInlineTokens(block.tokens), fontSize);
+        y += 6;
+        break;
+      case 'list':
+        for (const item of block.items) {
+          await renderInlineRuns(flattenInlineTokens(item.tokens), fontSize, '• ');
+        }
+        y += 4;
+        break;
+      case 'hr':
+        ensureSpace(14);
+        doc.setDrawColor(200);
+        doc.line(margin, y, margin + contentWidth, y);
+        doc.setDrawColor(0);
+        y += 14;
+        break;
+      case 'space':
+        break;
+      case 'code':
+        addWrappedText(block.text, fontSize - 1);
+        break;
+      default:
+        if (block.tokens) {
+          await renderInlineRuns(flattenInlineTokens(block.tokens), fontSize);
+        } else if (block.text) {
+          addWrappedText(block.text, fontSize);
+        }
+    }
+  }
+
+  /** Renders a full Markdown string (the gallery description or a
+   *  day description) with headings, bold/italic, clickable links,
+   *  list bullets, and embedded images (e.g. a map screenshot) all
+   *  preserved -- unlike plain-text stripping, which loses link hrefs
+   *  and drops images entirely. Falls back to plain-text rendering if
+   *  marked.js somehow isn't available. */
+  async function renderMarkdown(markdownSrc, fontSize) {
+    if (!markdownSrc || !markdownSrc.trim()) return;
+    if (typeof marked === 'undefined' || typeof marked.lexer !== 'function') {
+      addWrappedText(markdownToPlainText(markdownSrc), fontSize);
+      return;
+    }
+    const blocks = marked.lexer(markdownSrc);
+    for (const block of blocks) {
+      await renderMarkdownBlockToken(block, fontSize);
+    }
+  }
+
   // Title page
   doc.setFontSize(22);
   doc.text('Photo Gallery', margin, y + 10);
@@ -786,9 +1013,7 @@ async function generateGalleryPdf(onProgress) {
   doc.text('Generated ' + new Date().toLocaleDateString(), margin, y);
   doc.setTextColor(0);
   y += 26;
-  if (galleryDescriptionText.trim()) {
-    addWrappedText(markdownToPlainText(galleryDescriptionText), 11);
-  }
+  await renderMarkdown(galleryDescriptionText, 11);
 
   // Photos are laid out 4-per-page in a 2x2 grid (one row of 2, then
   // another row of 2), each cell holding a scaled-to-fit image plus a
@@ -831,9 +1056,7 @@ async function generateGalleryPdf(onProgress) {
     y += 24;
 
     const dayText = group.key !== 'unknown' ? dayDescriptionTexts[group.key] : null;
-    if (dayText && dayText.trim()) {
-      addWrappedText(markdownToPlainText(dayText), 11);
-    }
+    await renderMarkdown(dayText, 11);
 
     let cellIndex = 0;
     for (const photo of group.items) {

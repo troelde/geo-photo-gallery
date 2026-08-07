@@ -766,10 +766,13 @@ function isOneDriveShareLink(url) {
 async function resolveOneDriveShareLink(url) {
   if (!lastAccessToken) throw new Error('Not signed in, cannot resolve OneDrive link');
   const shareId = encodeShareUrl(url);
-  const resp = await fetch(
-    `${GRAPH_API}/shares/${shareId}/driveItem?$select=id,@microsoft.graph.downloadUrl`,
-    { headers: { Authorization: 'Bearer ' + lastAccessToken } }
-  );
+  // Deliberately no $select here: Graph silently omits the
+  // @microsoft.graph.downloadUrl annotation from the response
+  // whenever $select is used (a known Graph API quirk), so the full
+  // driveItem must be requested to actually get it.
+  const resp = await fetch(`${GRAPH_API}/shares/${shareId}/driveItem`, {
+    headers: { Authorization: 'Bearer ' + lastAccessToken },
+  });
   if (!resp.ok) throw new Error(`Could not resolve OneDrive link (HTTP ${resp.status})`);
   const data = await resp.json();
   const downloadUrl = data['@microsoft.graph.downloadUrl'];

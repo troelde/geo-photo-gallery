@@ -115,7 +115,7 @@ IMG_5678.jpg:
   description: Just a caption, no GPS/date override needed
 ```
 
-`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need per photo. Any field present in a photo's entry **overrides** its real EXIF GPS location, OneDrive description, or EXIF taken date, even if OneDrive/EXIF already has a value — this lets you both fill gaps (e.g. scanned photos, screenshots, or camera gear that doesn't record GPS/dates) and correct wrong or undesired metadata. Fields you omit from an entry are left untouched (the photo's real EXIF/OneDrive value is used as-is).
+`date` accepts `YYYY-MM-DD` (midnight is assumed) or `YYYY-MM-DDTHH:MM` (date + time of day). All fields are optional and independent — include only what you need per photo. Any field present in a photo's entry **overrides** its real EXIF GPS location, OneDrive description, or EXIF taken date, even if OneDrive/EXIF already has a value — this lets you both fill gaps (e.g. scanned photos, screenshots, or camera gear that doesn't record GPS/dates) and correct wrong or undesired metadata. Fields you omit from an entry are left untouched (the photo's real EXIF/OneDrive value is used as-is). A blank/whitespace-only `description` is treated the same as omitting it — it falls back to the real EXIF/OneDrive description rather than hiding it, since an intentionally blank caption is rarely useful and this avoids surprising missing captions from stray empty entries.
 
 You can hand-edit `metadata/photos.yaml` directly in OneDrive, or use the **Admin App** below for a form-based UI. The file (and its `metadata/` folder, if missing) is created automatically on first save from the Admin App.
 

@@ -162,7 +162,11 @@ async function fetchDescriptions(rootItems, token) {
  *  overrides the photo's real EXIF/OneDrive value for that field --
  *  this lets photos.yaml both fill gaps (missing EXIF) and correct
  *  wrong/undesired EXIF data. Fields omitted from the YAML entry are
- *  left untouched. */
+ *  left untouched. A blank/whitespace-only description does NOT count
+ *  as an override (falls back to the real EXIF/OneDrive description
+ *  instead) -- this avoids silently hiding real captions left over
+ *  from data that had an empty `description:` key written but no
+ *  actual override intended. */
 function applyYamlFallbackFields(photo, data) {
   if (!data) return;
 
@@ -173,7 +177,7 @@ function applyYamlFallbackFields(photo, data) {
     photo.location = { latitude: lat, longitude: lon };
   }
 
-  if (typeof data.description === 'string') {
+  if (typeof data.description === 'string' && data.description.trim()) {
     photo.description = data.description;
   }
 

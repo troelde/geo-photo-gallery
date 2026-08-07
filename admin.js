@@ -638,14 +638,19 @@ async function handleSaveDayDescription() {
 // ---- PDF export ------------------------------------------------
 
 /** The effective description shown for a photo: the centralized
- *  metadata/photos.yaml override if present (any string, even an
- *  empty one, counts as an explicit override), else the photo's real
- *  OneDrive/EXIF description, else null. Mirrors the override
- *  precedence in applyYamlFallbackFields in app.js. */
+ *  metadata/photos.yaml override if present and non-blank, else the
+ *  photo's real OneDrive/EXIF description, else null. A blank/
+ *  whitespace-only override does NOT count as an override (falls
+ *  back to the real description instead) -- this avoids silently
+ *  hiding real captions for photos whose photos.yaml entry happens to
+ *  have an empty `description:` key. Mirrors the override precedence
+ *  in applyYamlFallbackFields in app.js. */
 function effectiveDescription(photo) {
   const centralKey = centralizedKeyFor(photo);
   const entry = centralKey != null ? centralizedData[centralKey] : null;
-  if (entry && typeof entry.description === 'string') return entry.description;
+  if (entry && typeof entry.description === 'string' && entry.description.trim()) {
+    return entry.description;
+  }
   return typeof photo.description === 'string' && photo.description ? photo.description : null;
 }
 

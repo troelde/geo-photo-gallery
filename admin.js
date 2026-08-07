@@ -1071,13 +1071,13 @@ async function generateGalleryPdf(onProgress) {
   const gridTop = margin;
   const gridBottom = pageHeight - margin;
   const cellHeight = (gridBottom - gridTop - cellGapY * (gridRows - 1)) / gridRows;
-  const textBlockHeight = 58; // reserved for filename/caption/date/GPS lines
+  const textBlockHeight = 96; // reserved for filename/caption (up to 2 wrapped lines each) + date/GPS lines
   const imageMaxHeight = cellHeight - textBlockHeight - 6;
 
   /** Truncates text to a single line that fits maxWidth at the given
    *  font size, appending an ellipsis if it had to be cut short --
-   *  used for the compact per-cell caption fields since each cell has
-   *  very little vertical space in a 4-per-page grid. */
+   *  used for the compact per-cell date/GPS fields, which are rarely
+   *  long enough to need more than one line. */
   function truncateLine(text, fontSize, maxWidth) {
     doc.setFontSize(fontSize);
     const lines = doc.splitTextToSize(text, maxWidth);
@@ -1087,6 +1087,25 @@ async function generateGalleryPdf(onProgress) {
       line = line.slice(0, -1);
     }
     return line.replace(/\s+$/, '') + '…';
+  }
+
+  /** Word-wraps text to at most maxLines lines that fit maxWidth at
+   *  the given font size (rather than clipping/truncating to a single
+   *  line) -- used for the filename and caption fields, which can
+   *  otherwise be long enough to lose meaningful content when cut
+   *  short. If it still doesn't fit in maxLines, the last line is
+   *  truncated with an ellipsis as a last resort. */
+  function wrapLines(text, fontSize, maxWidth, maxLines) {
+    doc.setFontSize(fontSize);
+    const lines = doc.splitTextToSize(text, maxWidth);
+    if (lines.length <= maxLines) return lines;
+    const kept = lines.slice(0, maxLines);
+    let last = kept[maxLines - 1];
+    while (last.length > 1 && doc.getTextWidth(last + '…') > maxWidth) {
+      last = last.slice(0, -1);
+    }
+    kept[maxLines - 1] = last.replace(/\s+$/, '') + '…';
+    return kept;
   }
 
   const groups = groupPhotosByDate(photos);
@@ -1152,16 +1171,20 @@ async function generateGalleryPdf(onProgress) {
       let textY = cellY + imageMaxHeight + 12;
       doc.setFontSize(9);
       doc.setTextColor(0);
-      doc.text(truncateLine(photo.name, 9, cellWidth), cellX, textY);
-      textY += 12;
+      for (const line of wrapLines(photo.name, 9, cellWidth, 2)) {
+        doc.text(line, cellX, textY);
+        textY += 11;
+      }
 
       const desc = effectiveDescription(photo);
       if (desc) {
         doc.setFontSize(8);
         doc.setTextColor(60);
-        doc.text(truncateLine(desc, 8, cellWidth), cellX, textY);
+        for (const line of wrapLines(desc, 8, cellWidth, 2)) {
+          doc.text(line, cellX, textY);
+          textY += 10;
+        }
         doc.setTextColor(0);
-        textY += 11;
       }
 
       const taken = effectiveTakenDate(photo);

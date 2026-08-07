@@ -933,9 +933,14 @@ async function generateGalleryPdf(onProgress) {
             height
           );
           y += height + 10;
-        } catch {
+        } catch (err) {
           // Fall through -- show a small note instead of the image
-          // rather than dropping/aborting the whole description.
+          // rather than dropping/aborting the whole description. Log
+          // the real cause to the console since the PDF note alone
+          // ("[image unavailable: ...]") isn't enough to debug why
+          // (e.g. not signed in, share link needs resolving, CORS,
+          // 404, etc.).
+          console.warn(`PDF export: could not embed description image "${word.alt || word.src}" (${word.src}):`, err);
           ensureSpace(lineHeight);
           doc.setFont(defaultFontName, 'normal');
           doc.setFontSize(fontSize - 1);

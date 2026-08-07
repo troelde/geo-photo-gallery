@@ -112,7 +112,7 @@
     <h2>Export gallery as PDF</h2>
     <p class="subtle">
       Generates a single PDF containing the gallery description, each
-      day's description, and every photo (one per page) with its
+      day's description, and every photo (4 per page) with its
       caption, taken date, and GPS position — built entirely in your
       browser and downloaded directly, nothing is uploaded or processed
       on a server. This can take a little while for large galleries
@@ -193,6 +193,13 @@
             <button id="admin-delete-btn" type="button" class="btn danger" hidden>🗑 Remove overrides</button>
           </div>
         </form>
+
+        <div class="admin-info-box">
+          <h3>Danger zone</h3>
+          <p class="subtle">Permanently deletes the photo file itself from your OneDrive (not just its metadata override). This cannot be undone from here — check your OneDrive recycle bin if you change your mind.</p>
+          <button id="admin-delete-photo-btn" type="button" class="btn danger">🗑️ Delete photo from OneDrive</button>
+          <div id="admin-delete-photo-status" class="admin-status" hidden></div>
+        </div>
       </div>
     </section>
   </div>

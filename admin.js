@@ -1572,6 +1572,7 @@ function selectPhoto(photo) {
   document.getElementById('admin-detail-empty').hidden = true;
   document.getElementById('admin-detail-content').hidden = false;
   formStatus('', null);
+  deletePhotoStatus('', null);
 
   const thumbEl = document.getElementById('admin-detail-thumb');
   thumbEl.src = photo.thumbnails?.[0]?.medium?.url ?? '';
@@ -1701,6 +1702,75 @@ async function handleDelete() {
   }
 }
 
+function deletePhotoStatus(message, kind) {
+  const el = document.getElementById('admin-delete-photo-status');
+  el.textContent = message;
+  el.className = 'admin-status' + (kind ? ` ${kind}` : '');
+  el.hidden = !message;
+}
+
+/** Permanently deletes the photo's underlying file from OneDrive
+ *  itself (via Graph's DELETE /drives/{driveId}/items/{itemId} --
+ *  requires the Files.ReadWrite scope this app already requests),
+ *  distinct from handleDelete() above which only removes its
+ *  metadata/photos.yaml override entry. Also removes any existing
+ *  override entry for it (since the photo no longer exists to apply
+ *  one to) and updates the in-memory photo list/UI on success. Asks
+ *  for confirmation first since this can't be undone from the app. */
+async function handleDeletePhoto() {
+  if (!selectedPhoto || !lastAccessToken) return;
+  if (
+    !confirm(
+      `Permanently delete "${selectedPhoto.name}" from OneDrive? This cannot be undone from here.`
+    )
+  ) {
+    return;
+  }
+
+  const btn = document.getElementById('admin-delete-photo-btn');
+  btn.disabled = true;
+  deletePhotoStatus('Deleting…', null);
+
+  const driveId = selectedPhoto.parentReference?.driveId;
+  const itemId = selectedPhoto.id;
+  if (!driveId || !itemId) {
+    deletePhotoStatus('Delete failed — missing drive/item id for this photo.', 'error');
+    btn.disabled = false;
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${GRAPH_API}/drives/${driveId}/items/${itemId}`, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + lastAccessToken },
+    });
+    if (!resp.ok && resp.status !== 404) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+
+    // Clean up any metadata override for the now-deleted photo, best
+    // effort -- a failure here shouldn't be reported as the delete
+    // itself having failed, since the photo file is already gone.
+    const centralKey = centralizedKeyFor(selectedPhoto);
+    if (centralKey != null) {
+      delete centralizedData[centralKey];
+      await saveCentralizedMetadata().catch(() => {});
+    }
+
+    photos = photos.filter((p) => p.id !== itemId);
+    selectedPhoto = null;
+    document.getElementById('admin-detail-content').hidden = true;
+    const emptyEl = document.getElementById('admin-detail-empty');
+    emptyEl.textContent = 'Photo deleted ✓ — select another photo on the left to view or edit its metadata.';
+    emptyEl.hidden = false;
+    renderPhotoList(document.getElementById('admin-filter').value);
+  } catch (err) {
+    deletePhotoStatus('Delete failed: ' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---- Main load ----------------------------------------------------
 
 async function loadAdminData() {
@@ -1784,6 +1854,7 @@ document.getElementById('admin-signin-btn').addEventListener('click', signIn);
 document.getElementById('admin-signout-btn').addEventListener('click', signOut);
 document.getElementById('admin-sidecar-form').addEventListener('submit', handleSave);
 document.getElementById('admin-delete-btn').addEventListener('click', handleDelete);
+document.getElementById('admin-delete-photo-btn').addEventListener('click', handleDeletePhoto);
 document.getElementById('admin-filter').addEventListener('input', (e) => {
   renderPhotoList(e.target.value);
 });

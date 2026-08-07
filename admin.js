@@ -745,11 +745,48 @@ function markdownToPlainText(md) {
     .trim();
 }
 
+/** Matches a OneDrive/SharePoint "Anyone with the link" share URL
+ *  (short 1drv.ms links or full onedrive.live.com/sharepoint.com
+ *  links) -- these can't be fetch()'d directly for their image bytes:
+ *  they resolve to an HTML viewer page, not raw image data, and
+ *  typically don't send CORS headers anyway, so a direct fetch() then
+ *  either downloads the wrong thing or fails outright. Used to embed
+ *  a link like ![Kart](https://1drv.ms/i/...) that a user pastes into
+ *  a gallery/day description's Markdown. */
+function isOneDriveShareLink(url) {
+  return /^https:\/\/(1drv\.ms|[\w-]+\.sharepoint\.com|onedrive\.live\.com)\//i.test(url);
+}
+
+/** Resolves a OneDrive/SharePoint share link to its actual direct
+ *  download URL via the Graph `/shares` API (same encodeShareUrl
+ *  encoding used for the gallery's own share link), using the
+ *  signed-in user's access token. The resulting download URL is a
+ *  temporary, pre-authenticated, CORS-enabled blob storage URL that
+ *  can be fetched directly, unlike the original share link. */
+async function resolveOneDriveShareLink(url) {
+  if (!lastAccessToken) throw new Error('Not signed in, cannot resolve OneDrive link');
+  const shareId = encodeShareUrl(url);
+  const resp = await fetch(
+    `${GRAPH_API}/shares/${shareId}/driveItem?$select=id,@microsoft.graph.downloadUrl`,
+    { headers: { Authorization: 'Bearer ' + lastAccessToken } }
+  );
+  if (!resp.ok) throw new Error(`Could not resolve OneDrive link (HTTP ${resp.status})`);
+  const data = await resp.json();
+  const downloadUrl = data['@microsoft.graph.downloadUrl'];
+  if (!downloadUrl) throw new Error('OneDrive link has no direct download URL');
+  return downloadUrl;
+}
+
 /** Fetches an image URL (OneDrive's pre-signed thumbnail CDN URLs
  *  work directly, no Authorization header needed) and converts it to
- *  a data URL for embedding via jsPDF's addImage. */
+ *  a data URL for embedding via jsPDF's addImage. OneDrive/SharePoint
+ *  "share" links (e.g. a 1drv.ms link pasted into a Markdown
+ *  description) are resolved to their real direct-download URL first
+ *  via the Graph API, since the share link itself isn't fetchable
+ *  image data. */
 async function fetchImageAsDataUrl(url) {
-  const resp = await fetch(url);
+  const fetchUrl = isOneDriveShareLink(url) ? await resolveOneDriveShareLink(url) : url;
+  const resp = await fetch(fetchUrl);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const blob = await resp.blob();
   return await new Promise((resolve, reject) => {

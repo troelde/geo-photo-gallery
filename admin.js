@@ -745,6 +745,25 @@ function markdownToPlainText(md) {
     .trim();
 }
 
+/** jsPDF's built-in standard fonts (Helvetica/Times/Courier) only
+ *  support the WinAnsi (cp1252) character set. Some punctuation
+ *  commonly produced by rich-text editors/autocorrect falls outside
+ *  that set -- most notably U+2011 NON-BREAKING HYPHEN (e.g. in
+ *  "Wi‑Fi" or "Ny‑Ålesund") and its cousins U+2010/2012/2015, plus
+ *  zero-width characters. Rendering those directly makes jsPDF's
+ *  measured text width diverge from what it actually draws (since the
+ *  glyph doesn't exist in the font), producing garbled, overlapping
+ *  text. Normalize known offenders to a plain ASCII hyphen/space
+ *  before any description text reaches doc.text()/textWithLink()/
+ *  getTextWidth() or splitTextToSize(). */
+function sanitizeForPdf(text) {
+  if (!text) return text;
+  return text
+    .replace(/[\u2010\u2011\u2012\u2015]/g, '-')
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ');
+}
+
 /** Matches a OneDrive/SharePoint "Anyone with the link" share URL
  *  (short 1drv.ms links or full onedrive.live.com/sharepoint.com
  *  links) -- these can't be fetch()'d directly for their image bytes:
@@ -861,7 +880,7 @@ async function generateGalleryPdf(onProgress) {
     if (!text) return;
     doc.setFontSize(fontSize);
     doc.setTextColor(0);
-    const lines = doc.splitTextToSize(text, contentWidth);
+    const lines = doc.splitTextToSize(sanitizeForPdf(text), contentWidth);
     lines.forEach((line) => {
       if (y > pageHeight - margin) {
         doc.addPage();
@@ -909,7 +928,7 @@ async function generateGalleryPdf(onProgress) {
         words.push(run);
         continue;
       }
-      for (const part of run.text.split(/\s+/)) {
+      for (const part of sanitizeForPdf(run.text).split(/\s+/)) {
         if (part) words.push({ type: 'text', text: part, bold: run.bold, italic: run.italic, href: run.href });
       }
     }
@@ -995,7 +1014,7 @@ async function generateGalleryPdf(onProgress) {
         doc.setFont(defaultFontName, 'bold');
         doc.setFontSize(size);
         doc.setTextColor(0);
-        doc.text(block.text, margin, y);
+        doc.text(sanitizeForPdf(block.text), margin, y);
         doc.setFont(defaultFontName, 'normal');
         y += size * 1.4 + 4;
         break;
@@ -1080,7 +1099,7 @@ async function generateGalleryPdf(onProgress) {
    *  long enough to need more than one line. */
   function truncateLine(text, fontSize, maxWidth) {
     doc.setFontSize(fontSize);
-    const lines = doc.splitTextToSize(text, maxWidth);
+    const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
     if (lines.length <= 1) return lines[0] || '';
     let line = lines[0];
     while (line.length > 1 && doc.getTextWidth(line + '…') > maxWidth) {
@@ -1097,7 +1116,7 @@ async function generateGalleryPdf(onProgress) {
    *  truncated with an ellipsis as a last resort. */
   function wrapLines(text, fontSize, maxWidth, maxLines) {
     doc.setFontSize(fontSize);
-    const lines = doc.splitTextToSize(text, maxWidth);
+    const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
     if (lines.length <= maxLines) return lines;
     const kept = lines.slice(0, maxLines);
     let last = kept[maxLines - 1];

@@ -745,6 +745,24 @@ function markdownToPlainText(md) {
     .trim();
 }
 
+/** Decodes HTML entities (e.g. `&quot;`, `&amp;`, `&#39;`) that can end
+ *  up literally embedded in photo descriptions/captions -- e.g. when a
+ *  caption was authored or synced through a tool that HTML-escaped it
+ *  (common with text pasted from web pages or exported from some photo
+ *  apps). Without this, such text would show the literal escaped
+ *  sequence (e.g. `&quot;bare&quot;`) instead of the intended `"bare"`
+ *  in the PDF. Uses the browser's own HTML parsing via a scratch
+ *  <textarea> so it correctly handles named, decimal, and hex entity
+ *  references. Left untouched if there's nothing that looks like an
+ *  entity, to avoid the (tiny) overhead on the common case. */
+let entityDecodeEl = null;
+function decodeHtmlEntities(text) {
+  if (!text || !/&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/.test(text)) return text;
+  if (!entityDecodeEl) entityDecodeEl = document.createElement('textarea');
+  entityDecodeEl.innerHTML = text;
+  return entityDecodeEl.value;
+}
+
 /** jsPDF's built-in standard fonts (Helvetica/Times/Courier) only
  *  support the WinAnsi (cp1252) character set. Some punctuation
  *  commonly produced by rich-text editors/autocorrect falls outside
@@ -753,12 +771,13 @@ function markdownToPlainText(md) {
  *  zero-width characters. Rendering those directly makes jsPDF's
  *  measured text width diverge from what it actually draws (since the
  *  glyph doesn't exist in the font), producing garbled, overlapping
- *  text. Normalize known offenders to a plain ASCII hyphen/space
+ *  text. Normalize known offenders to a plain ASCII hyphen/space, and
+ *  decode any literal HTML entities (see decodeHtmlEntities above),
  *  before any description text reaches doc.text()/textWithLink()/
  *  getTextWidth() or splitTextToSize(). */
 function sanitizeForPdf(text) {
   if (!text) return text;
-  return text
+  return decodeHtmlEntities(text)
     .replace(/[\u2010\u2011\u2012\u2015]/g, '-')
     .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
     .replace(/\u00A0/g, ' ');

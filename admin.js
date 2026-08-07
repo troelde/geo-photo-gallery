@@ -851,11 +851,12 @@ function imageFormatFromDataUrl(dataUrl) {
 
 /** Builds the full gallery PDF in memory and returns the jsPDF
  *  document (does not trigger the download itself -- see
- *  handleGeneratePdf). Structure: title page (heading + gallery
- *  description, rendered richly -- headings, bold/italic, clickable
- *  links, and embedded images all preserved) -> per date-group
- *  section heading + day description (same rich rendering) -> photos
- *  laid out 4-per-page in a 2x2 grid (image, caption, taken date, and
+ *  handleGeneratePdf). Structure: title page (generated-date line +
+ *  gallery description, rendered richly -- headings, bold/italic,
+ *  clickable links, and embedded images all preserved) -> per
+ *  date-group section heading + day description (same rich
+ *  rendering) -> photos laid out 4-per-page in a 2x2 grid (image,
+ *  caption, taken date, and
  *  a "View on map" link, each truncated to fit its compact cell) ->
  *  page numbers added in a final pass. Calls
  *  onProgress(current, total) before rendering each photo's cell so
@@ -1069,12 +1070,9 @@ async function generateGalleryPdf(onProgress) {
   }
 
   // Title page
-  doc.setFontSize(22);
-  doc.text('Photo Gallery', margin, y + 10);
-  y += 34;
   doc.setFontSize(10);
   doc.setTextColor(120);
-  doc.text('Generated ' + new Date().toLocaleDateString(), margin, y);
+  doc.text('Generated ' + new Date().toLocaleDateString(), margin, y + 10);
   doc.setTextColor(0);
   y += 26;
   await renderMarkdown(galleryDescriptionText, 11);
